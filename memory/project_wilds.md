@@ -67,7 +67,7 @@ The codebase is the `archon` Python actor framework (originally from SDSS), bein
 
 **aos.loisTelemetry key fields:** Root tag `AOSTelemetry`. TimeStamp (Unix s), FocusOffset (**microns** — note: AOSDataPacket uses meters). Minimal content; prefer AOSDataPacket for AOS status.
 
-**deveny.loisTelemetry** is the template for `wilds.loisTelemetry`. WILDS will publish: TimeStamp, SlitWidthMM, SlitWidthASEC, ADC stage positions, calibration lamp states. Schema TBD with LIG.
+**deveny.loisTelemetry** is the template for `wilds.loisTelemetry`. WILDS will publish: Timestamp, SlitWidthMM, SlitWidthASEC, ADC stage positions, 2 calibration lamps (name, on/off state, In/Out position), shutter, detector and guide-camera state. Draft model: `wilds-bridge` `WildsTelemetry`. Schema TBD with LIG.
 
 **instrumentCube.loisTelemetry:** Root `InstrumentCubeTelemetry`. TimeStamp, InstrumentCoverState (Unknown/Open/Closed), InstrumentCoverPosition (mm), FMA–FMD State (Unknown/Home/Extended) and Position (mm). Relevant for FITS headers.
 
@@ -145,14 +145,17 @@ agents_to_monitor:
 - **Separate exposure durations per detector** — each Archon runs its own countdown; orchestrator fires trigger then waits on both readouts via asyncio.gather()
 - Key open question with STA: does TriggerIn start integration only, or gate the full exposure?
 
-### Motorized Stages
-- **One SmarAct MCS2 controller, 3 channels**: 2× ADC rotator stages + 1 slit linear stage
-- ADC stages driven autonomously by TCS telemetry (parallactic angle + elevation)
-- Single shutter, likely driven directly by the Archon controller (TBD — eliminates need for separate Uniblitz or stage-controller shutter driver)
-- Software: one SmarAct singleton managing all 3 channels (channel assignment TBD); SDK uses single controller handle + channel index
+### Motorized Stages (confirmed by user 2026-10-13)
+- **ADC:** 2 stages on a SmarAct MCS2. Driven autonomously by TCS telemetry (parallactic angle + elevation)
+- **Slit:** a stage sets the slit **width**; the spectrograph (science) cameras see the light that passes through the slit. Stage controller **TBD** (earlier plan had it on the MCS2 with the ADC — not confirmed)
+- **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. Stage controller and power switching **TBD**. Lamp types not yet known
+- **Shutter:** single, driven by the Archon controller
+- Software: SmarAct SDK uses a single controller handle + channel index; channel assignment TBD
 
 ### Guide Camera
-- TBD
+- **ZWO ASI294-class** camera. Sees the sky surrounding the slit, reflected by a **static mirror** — i.e. a slit-viewing camera used for acquisition and guiding
+- Open item: the slit's reference position (pixel) on the guide-camera image, needed to put targets on the slit
+- `wilds-solving` plate-solves its frames (scale hints assume ASI294MM, 4.63 µm pixels)
 
 ## Proposed Software Architecture
 
@@ -168,24 +171,22 @@ FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon
 - **Telescope** — wraps TCS commands (offsets, focus, etc.) via LDT Bridge
 - **Focuser** — wraps focus commands
 - **ADC** — SmarAct MCS2 channels for ADC rotator stages; manual control initially, auto mode using `currentParAngle` from TCS telemetry when confidence is established
-- **SlitStage** — SmarAct MCS2 channel for slit linear stage
+- **SlitStage** — slit width stage (controller TBD)
+- **CalibrationLamps (×2)** — power on/off + In/Out stage per lamp (controller TBD)
 - **ScienceCamera (×2)** — Archon VIS + UV CCD controllers
-- **GuideCamera** — TBD
+- **GuideCamera** — ZWO ASI294-class slit-viewing camera
 
 ### GUI Architecture
-Django + Django Channels (WebSocket) running inside a single ASGI process (Daphne/Uvicorn). LDT Bridge runs in the same process/event loop — no external message broker needed for internal data flow. `InMemoryChannelLayer` sufficient for single-server deployment.
-
-**Data flow:**
-```
-ActiveMQ ─── LDT Bridge ─┐
-                          ├─ (same ASGI process) ─▶ Django Channels ──▶ Browser (WS)
-Guide camera ─────────────┘                       ──▶ MJPEG stream
-Browser ──▶ Django views ──▶ Telescope / Focuser / SmarAct singletons
-```
+`wilds-gui`, probably Django — **details still to be discussed with the user**.
+Current design (`wilds-control/docs/architecture.md`): Django (:8000) serves the page; control
+(POST /acquire /slit /lamps /adc /focus /solve), telemetry (SSE) and guide-camera video (WS, JPEG
+frames) go to `wilds-control` (FastAPI/Hypercorn :8001). This supersedes an earlier idea of
+Django + Channels owning the process and calling the hardware singletons directly.
 
 **GUI features (TO-facing):**
-- Guide camera canvas: start/stop streaming (MJPEG), used for focus checks
-- SmarAct stage controls: slit width, ADC rotation (manual override)
+- Guide camera canvas: start/stop streaming, acquisition onto the slit, focus checks
+- Stage controls: slit width, ADC rotation (manual override)
+- Calibration lamps: on/off and In/Out for each of the 2 lamps
 - ADC auto mode: drives stages from `currentParAngle` telemetry once validated
 - Component status panel: TCS state, health, Az/El, PA, LST; camera status; stage positions
 - Science exposure controls: parameters (exptime, etc.), start/stop
