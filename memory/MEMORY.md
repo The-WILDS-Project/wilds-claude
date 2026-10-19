@@ -8,3 +8,4 @@
 - [User Signals](feedback_signals.md) — `???` means "your thoughts/suggestions please"
 - [Memory Location](feedback_memory_location.md) — Memory, plans and notes go in this wilds-claude repo, not ~/.claude
 - [Dev Environment](project_dev_environment.md) — Shared Python 3.14 venv at WILDS/.venv; wilds namespace package; archon from PyPI
+- [Pull Requests](feedback_pull_requests.md) — WILDS changes go on a feature branch + GitHub PR, never direct to main/master
