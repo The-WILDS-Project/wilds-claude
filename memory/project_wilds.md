@@ -151,6 +151,10 @@ agents_to_monitor:
 - **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. Stage controller and power switching **TBD**. Lamp types not yet known
 - **Shutter:** single, driven by the Archon controller
 - **Three SmarAct stages in total: slit + 2 ADC**, all on **one MCS2-C-0006** — tabletop housing, 3 channels, **Ethernet** interface (decided by user 2026-10-25). Channels: **0 = slit, 1 = ADC 1, 2 = ADC 2** (so ADC channel = `AdcIndex`)
+- **Stage part numbers** (user, 2026-10-25):
+  - Slit (ch 0): SmarAct `EX-0045566-000-CLS3232-4th` — CLS-3232 linear stage. CLS is newer than the 2018 MCS2 positioner-type list, so its MCS2 type code isn't in that list; `-4th` suffix not yet understood
+  - ADC 1 & 2 (ch 1, 2): SmarAct `EX-0018664-003-SRM120-S` — SR-120-class rotary stage with S-sensor. Per the 2018 MCS2 Positioner Types list, SR120 maps to MCS2 type code **320** (`SR...T1S8S`, large rotary, single reference mark) — inferred, confirm against the controller's configured type
+  - `EX-…` prefixes look like SmarAct custom/order numbers
 - **Control path: SCPI over TCP from Linux** — no SmarAct SDK on the instrument computer. Ethernet-only model means the ASCII interface is available; the USB variant (C-0002) would have required the native SDK. Pulling the network cable stops all positioners, so use a private/direct wired link; change the default IP before deployment
 - Software: SmarAct's SDK (SmarActCTL) is a native library (Windows DLL / Linux .so, no macOS) plus a generated CFFI Python file; it comes only from SmarAct with the controller, under their EULA — not on PyPI. MCS2 units with an Ethernet port also speak **SCPI over raw TCP, port 55551** (`<CR><LF>` termination, default IP 192.168.1.200; MCS2 Programmer's Guide ch. 6), which needs no vendor library
 
