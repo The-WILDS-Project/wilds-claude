@@ -150,7 +150,7 @@ agents_to_monitor:
 - **Slit:** a stage sets the slit **width**; the spectrograph (science) cameras see the light that passes through the slit. **SmarAct** stage (confirmed by user 2026-10-25)
 - **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. Stage controller and power switching **TBD**. Lamp types not yet known
 - **Shutter:** single, driven by the Archon controller
-- **Three SmarAct stages in total: slit + 2 ADC**, all on **one MCS2-C-0006** — tabletop housing, 3 channels, **Ethernet** interface (decided by user 2026-10-25). Channels: **0 = slit**; 1 and 2 = the two ADC stages (which ADC on which channel not yet confirmed)
+- **Three SmarAct stages in total: slit + 2 ADC**, all on **one MCS2-C-0006** — tabletop housing, 3 channels, **Ethernet** interface (decided by user 2026-10-25). Channels: **0 = slit, 1 = ADC 1, 2 = ADC 2** (so ADC channel = `AdcIndex`)
 - **Control path: SCPI over TCP from Linux** — no SmarAct SDK on the instrument computer. Ethernet-only model means the ASCII interface is available; the USB variant (C-0002) would have required the native SDK. Pulling the network cable stops all positioners, so use a private/direct wired link; change the default IP before deployment
 - Software: SmarAct's SDK (SmarActCTL) is a native library (Windows DLL / Linux .so, no macOS) plus a generated CFFI Python file; it comes only from SmarAct with the controller, under their EULA — not on PyPI. MCS2 units with an Ethernet port also speak **SCPI over raw TCP, port 55551** (`<CR><LF>` termination, default IP 192.168.1.200; MCS2 Programmer's Guide ch. 6), which needs no vendor library
 
