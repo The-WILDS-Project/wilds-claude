@@ -150,7 +150,8 @@ agents_to_monitor:
 - **Slit:** a stage sets the slit **width**; the spectrograph (science) cameras see the light that passes through the slit. **SmarAct** stage (confirmed by user 2026-10-25)
 - **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. Stage controller and power switching **TBD**. Lamp types not yet known
 - **Shutter:** single, driven by the Archon controller
-- **Three SmarAct stages in total: slit + 2 ADC** (user, 2026-10-25). Whether all three share one MCS2 controller, and the channel assignment, is TBD
+- **Three SmarAct stages in total: slit + 2 ADC**, all on **one MCS2-C-0006** — tabletop housing, 3 channels, **Ethernet** interface (decided by user 2026-10-25). Channel-to-stage assignment (0–2) TBD
+- **Control path: SCPI over TCP from Linux** — no SmarAct SDK on the instrument computer. Ethernet-only model means the ASCII interface is available; the USB variant (C-0002) would have required the native SDK. Pulling the network cable stops all positioners, so use a private/direct wired link; change the default IP before deployment
 - Software: SmarAct's SDK (SmarActCTL) is a native library (Windows DLL / Linux .so, no macOS) plus a generated CFFI Python file; it comes only from SmarAct with the controller, under their EULA — not on PyPI. MCS2 units with an Ethernet port also speak **SCPI over raw TCP, port 55551** (`<CR><LF>` termination, default IP 192.168.1.200; MCS2 Programmer's Guide ch. 6), which needs no vendor library
 
 ### Guide Camera
@@ -171,8 +172,8 @@ FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon
 ### Singleton Control Objects
 - **Telescope** — wraps TCS commands (offsets, focus, etc.) via LDT Bridge
 - **Focuser** — wraps focus commands
-- **ADC** — SmarAct MCS2 channels for ADC rotator stages; manual control initially, auto mode using `currentParAngle` from TCS telemetry when confidence is established
-- **SlitStage** — slit width stage (SmarAct)
+- **ADC** — 2 channels of the shared MCS2-C-0006; manual control initially, auto mode using `currentParAngle` from TCS telemetry when confidence is established
+- **SlitStage** — slit width stage, 1 channel of the shared MCS2-C-0006 (one SCPI connection shared with ADC)
 - **CalibrationLamps (×2)** — power on/off + In/Out stage per lamp (controller TBD)
 - **ScienceCamera (×2)** — Archon VIS + UV CCD controllers
 - **GuideCamera** — ZWO ASI294-class slit-viewing camera
