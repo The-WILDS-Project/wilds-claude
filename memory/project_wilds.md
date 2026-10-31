@@ -189,6 +189,9 @@ Each instrument has an entry in the TCS (TCS Command → Instrument Name). DeVen
 - Software: SmarAct's SDK (SmarActCTL) is a native library (Windows DLL / Linux .so, no macOS) plus a generated CFFI Python file; it comes only from SmarAct with the controller, under their EULA — not on PyPI. MCS2 units with an Ethernet port also speak **SCPI over raw TCP, port 55551** (`<CR><LF>` termination, default IP 192.168.1.200; MCS2 Programmer's Guide ch. 6), which needs no vendor library
 
 ### Guide Camera
+- **Focus decisions (user, 2026-10-31):**
+  - The guide camera and the science cameras are **parfocal by design** — WILDS will ensure that in focus on the guide camera means in focus on the science cameras. Autofocus uses only the guide camera; no guide↔science focus offset is stored (parfocality is a commissioning check).
+  - There may be a fixed **offset between LDT's focus** (set via LDT's own guider/AOS) **and WILDS's best focus** — measured at commissioning, stored as configuration. Use it as the autofocus starting point (narrow scan around LDT focus + offset) and to log focus drift. Focus is commanded via AOS `AbsoluteFocusOffset` (metres).
 - **ZWO ASI294-class** camera. Sees the sky surrounding the slit, reflected by a **static mirror** — i.e. a slit-viewing camera used for acquisition and guiding
 - Open item: the slit's reference position (pixel) on the guide-camera image, needed to put targets on the slit
 - `wilds-solving` plate-solves its frames (scale hints assume ASI294MM, 4.63 µm pixels)
