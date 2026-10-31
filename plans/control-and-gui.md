@@ -278,11 +278,18 @@ users, roles and the observing log.
 6. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
    entry, and a Locutus FITS dictionary for WILDS.
 7. What does `rotI` mean in an instrument definition?
+8. User roles: should WILDS use LDT's Telescope Operator and Engineer roles, or add an
+   Instrument Operator? Is there an LDT account or authentication system WILDS should
+   use, rather than its own Django accounts?
 
 ## 6. Open decisions (ours)
 
-- **Users.** Telescope operator, observer, or both? This decides what sits behind an
-  engineering or commissioning mode.
+- **Users and roles: to be agreed with LIG.** LDT uses a *Telescope Operator* and an
+  *Engineer*. The TCS shows "User Mode: Operator" with an "Engineer Log in", and
+  `TCSTcsStatusSV.accessMode` reports it. WILDS may adopt those roles as they are, or add
+  an *Instrument Operator* (runs WILDS: exposures, acquisition, slit; no telescope
+  engineering). Read-only viewers are always allowed. Until agreed, the plan's
+  "operator" and "engineer" stand for whichever roles we settle on.
 - **How wilds-control trusts Django's users.** One option: Django issues a short-lived
   signed token for the logged-in user and role, and wilds-control checks it on commands
   and configuration changes.
@@ -290,6 +297,6 @@ users, roles and the observing log.
 ## 7. Decided
 
 - **GUI: Django** (2026-10-31). Django (`wilds-gui`, :8000) serves the pages and handles
-  user accounts, roles (viewer / operator / engineer) and the observing log. The browser
+  user accounts, roles (as agreed with LIG; see §6) and the observing log. The browser
   talks to wilds-control (:8001) directly over REST, SSE and WebSocket for commands, status,
   configuration and video. Django keeps no hardware state.
