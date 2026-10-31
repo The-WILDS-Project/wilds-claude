@@ -29,6 +29,7 @@
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
 | Jobs | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel`. States: queued → running → done, failed or cancelled |
 | Control | `POST /session/control` (take), `DELETE /session/control` (release) |
+| Configuration | `GET /config`, `GET`/`PUT /config/{component}`, `GET /config/{component}/schema`, `GET /config/{component}/history` (see §3.10) |
 | Video | `WS /guide-camera/stream`: binary JPEG frames, each preceded by a JSON metadata frame |
 
 The Python client is generated from FastAPI's OpenAPI schema. It replaces the hand-written
@@ -203,8 +204,52 @@ operator reviews and saves it.
 | Parfocality check | focus on the guide camera, inspect science frames | AOS focus |
 | ADC zero points | lamps or star | none |
 
-**Endpoints:** `POST /commissioning/{procedure}` → job; `GET /config/calibration`;
-`PUT /config/calibration` (save reviewed values; changes are logged).
+**Endpoints:** `POST /commissioning/{procedure}` → job. Accepted results are saved to the
+`calibration` component through `PUT /config/calibration` (§3.10).
+
+### 3.10 Configuration panels
+
+One Django panel per component, for viewing and changing the settings that wilds-control
+applies to hardware and procedures.
+
+**Who owns the configuration:** wilds-control. Each component's settings are a Pydantic
+model in the backend. wilds-control validates them, stores them (a versioned file per
+component), and applies them to the device. The Django panels render their forms from
+`GET /config/{component}/schema`, the model's JSON Schema, so fields, units, limits and
+help text are defined once, in the backend. Django's own database holds only GUI matters:
+users, roles and the observing log.
+
+**Three kinds of setting**, shown separately in each panel:
+
+| Kind | Examples | Who may change | When it applies |
+|---|---|---|---|
+| Operational | guide-camera exposure, gain; slit presets | operator | immediately, or rejected with `409` if the device is busy |
+| Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | engineer (commissioning mode) | on save; every change logged with user and time, and revertible |
+| Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | file only, not editable in the GUI | on restart |
+
+**Components and their settings**
+
+| Component | Settings |
+|---|---|
+| Guide camera (ASI294MM) | exposure, gain, offset, binning (1×1/2×2), ROI, USB bandwidth, cooler setpoint (Pro model), frame rate limit; display stretch (zscale/asinh, black/white points) |
+| Science cameras (Archon VIS, UV), each | default exposure time; window (lines, pixels, pre/post-skip, overscan); binning (h, v); CCD temperature setpoint; autoflush and flush count; readout speed, amplifiers and gain, depending on what the STA ACF exposes; ACF file in use (read-only) |
+| Slit stage (MCS2 ch 0) | named presets (name → width in mm, with arcsec shown at 8.02″/mm), speed, acceleration, travel limits, reference/calibrate actions |
+| ADC (MCS2 ch 1, 2), each | zero point, travel limits, speed; tracking model parameters, update rate and dead-band (minimum change before moving) |
+| Calibration lamps (×2) | name/type, warm-up time, In/Out positions, maximum on-time |
+| Autofocus | scan range, steps, exposure, star-size metric (HFD/FWHM), fit model, settle wait; LDT ↔ WILDS focus offset (calibration) |
+| Acquisition | tolerance (arcsec), maximum iterations, exposure, solver scale hints, centroid fallback on/off, offset type (TPLANE/Simple) |
+| Telescope interface | target defaults (rotator frame `Target`, effective wavelength), Locutus dictionary names; broker host (deployment) |
+| Data storage | instrument ID and abbreviation, file naming, rollover rule (noon UT−5 h), data directories (deployment) |
+
+**LDT messages:** none. Configuration is local to WILDS. Some values change what is sent
+(target wavelength, offset type, Locutus dictionary names).
+
+**Endpoints:** `GET /config` (all components); `GET /config/{component}`;
+`PUT /config/{component}` (validated; `409` if not applicable now);
+`GET /config/{component}/schema`; `GET /config/{component}/history` and
+`POST /config/{component}/revert/{version}`; for presets,
+`GET`/`POST`/`DELETE /config/slit/presets[/{name}]` and `POST /slit/preset/{name}`
+(move to a preset).
 
 ## 4. Order of work
 
@@ -213,6 +258,7 @@ operator reviews and saves it.
 | 1 | Status model and stream; GUI status panel. `TelescopeStatus` falls back to `TCSTcsStatusSV`. | TCS simulator, now | none |
 | 2 | Guide-camera simulator and live view with overlays | image simulator | none |
 | 3 | Jobs framework and control session | unit tests | none |
+| 3a | Configuration framework (models, storage, history, schema endpoints) and the generic Django form renderer; first panels for the guide camera and slit presets | simulators | none |
 | 4 | Slit width, lamps and ADC panels | MCS2 SCPI simulator | lamp and stage controllers for the lamps (TBD) |
 | 5 | Target submission and slit rotation | TCS simulator | **LIG: target path** |
 | 6 | Acquisition | TCS simulator and image simulator | **LIG: offset path (MCB fault)**; commissioning values |
@@ -235,8 +281,15 @@ operator reviews and saves it.
 
 ## 6. Open decisions (ours)
 
-- **GUI technology.** Django (accounts, observing log, admin; MAST_gui precedent) or a
-  single-page app served by FastAPI. Either way the GUI talks to wilds-control over REST,
-  SSE and WebSocket only.
 - **Users.** Telescope operator, observer, or both? This decides what sits behind an
   engineering or commissioning mode.
+- **How wilds-control trusts Django's users.** One option: Django issues a short-lived
+  signed token for the logged-in user and role, and wilds-control checks it on commands
+  and configuration changes.
+
+## 7. Decided
+
+- **GUI: Django** (2026-10-31). Django (`wilds-gui`, :8000) serves the pages and handles
+  user accounts, roles (viewer / operator / engineer) and the observing log. The browser
+  talks to wilds-control (:8001) directly over REST, SSE and WebSocket for commands, status,
+  configuration and video. Django keeps no hardware state.
