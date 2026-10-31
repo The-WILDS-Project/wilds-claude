@@ -166,6 +166,15 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 - **Separate exposure durations per detector** — each Archon runs its own countdown; orchestrator fires trigger then waits on both readouts via asyncio.gather()
 - Key open question with STA: does TriggerIn start integration only, or gate the full exposure?
 
+### TCS instrument definition (what WILDS will need from LIG)
+Each instrument has an entry in the TCS (TCS Command → Instrument Name). DeVeny's, read on the simulator 2026-10-31:
+- **Focal length 25 715.4 mm** → plate scale **8.02″/mm** at the Cassegrain focus. Slit: 1 mm = 8.02″ (1″ ≈ 0.125 mm) — the SlitWidthMM ↔ SlitWidthASEC conversion. Guide camera at 1:1: 4.63 µm px → **0.037″/px** (matches wilds-solving)
+- **Pointing origin X/Y 8.5 / −0.9 mm** — the instrument reference point (DeVeny: slit centre) relative to the rotator axis; WILDS needs its slit-centre value from commissioning
+- **IAA 6.0°** (LMI: 185.2°) — slit orientation vs the rotator; WILDS needs its own, measured per Confluence "IAA and center of rotation measurement". Switching instruments re-applies it: the rotator swung ~180° while the sky PA stayed 0
+- **rotI 1** — meaning unknown; ask LIG
+- WILDS needs its own TCS instrument entry, configured by LIG
+- Open: our newScienceTarget sends `pointingOriginX/Y = 0.0` (as LDT's example does) — does that override the instrument's pointing origin? If so WILDS must send the slit position
+
 ### Motorized Stages (confirmed by user 2026-10-13)
 - **ADC:** 2 stages on a SmarAct MCS2. Driven autonomously by TCS telemetry (parallactic angle + elevation)
 - **Slit:** a stage sets the slit **width**; the spectrograph (science) cameras see the light that passes through the slit. **SmarAct** stage (confirmed by user 2026-10-25)
