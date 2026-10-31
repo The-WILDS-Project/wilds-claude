@@ -59,6 +59,12 @@ The VNC password goes in through an environment variable, never on the command l
 - `tcsState` read `FAULT` for a while after Mount Control was enabled with the default
   "unspecified" target at the horizon; it returned to `ENABLED` once tracking a valid target.
 
+**Instrument definitions** (TCS Command → Instrument Name):
+- LMI (selected at start): IAA 185.2°.
+- DeVeny: focal length 25 715.4 mm (8.02″/mm), pointing origin (8.5, −0.9) mm, rotI 1,
+  IAA 6.0°. Selecting it rotated the rotator from ~351° to 155.26° (the IAA change plus the
+  parallactic-angle drift) while the sky PA stayed 0.00.
+
 **Environment notes:**
 - TCS health was red throughout: "Humidity (97 %) exceeds maximum (85 %)". The simulator
   uses real LDT weather; the WS simulator on lo-dctsim can override it.
@@ -74,3 +80,8 @@ The VNC password goes in through an environment variable, never on the command l
    should instruments not wait on overall `inPositionIsTrue`?
 3. Does the outer `demandRADec` accept decimal values (`6.0`, `20.0`) or must they be
    integers, as in the documented example?
+4. Do `pointingOriginX/Y` in a target command override the selected instrument's pointing
+   origin? (We send 0.0, as the documented example does.)
+5. What is the `rotI` parameter in an instrument definition (DeVeny: 1)?
+6. What does LIG need from us to create a WILDS instrument entry (focal length, pointing
+   origin, IAA), and how is the IAA measured for a new instrument?
