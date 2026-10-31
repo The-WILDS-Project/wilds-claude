@@ -88,6 +88,8 @@ The codebase is the `archon` Python actor framework (originally from SDSS), bein
 - `TCS.TCSSharedVariables.TCSLowLevelStatusSV.NewScienceTargetSV` — slew to new science target
   - Root tag: `<newScienceTarget>` containing demandRADec, pointingOriginX/Y, scienceTargetConfiguration (fracrate, rotator {rotPA, rotatorFrame}, target {RA/Dec, proper motion, parallax, rv, targetName, difftrack}, wl_microns), trackID
 
+- **Rotator:** no standalone command — JIRA TCSD-131 folded it into the target command's `rotPA` (0–360°, E of N; the slit's sky PA) and `rotFrame`. `target` (TCS default) holds the field still on the instrument; `fixed` tracks in Az/El (sky rotates). `rotoffset iaa` (alignment angle) and `mccrot*` (move/stop/stow/track) exist as TCS commands but aren't on the broker interface — ask LIG whether instruments may use them. Source: TCS External Interface Definitions DCT-0720S-005-I §3.3.3.2, 3.6.3 (see [[reference_confluence]])
+
 - **AOS Focus commands** — plain-text single-value messages (NOT XML), units **meters**:
   - `AOS.AOSSubDataSV.AbsoluteFocusOffset` — e.g. `3.1E-3`
   - `AOS.AOSSubDataSV.RelativeFocusOffset` — relative delta in meters
