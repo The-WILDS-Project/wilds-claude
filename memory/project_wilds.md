@@ -135,10 +135,15 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 
 ### LIG Contacts
 - **Timothy Ellsworth-Bowers (Tim)** — tbowers@lowell.edu (user's primary LDT contact)
-- Ryan Hamilton — rhamilton@lowell.edu (LDT software; MCB/command path questions)
-- Georgi Mandushev — gmand@lowell.edu
+- Ryan Hamilton — rhamilton@lowell.edu — **head of instrumentation**; maintains the ActiveMQ broker (MCB/command path questions)
+- Georgi Mandushev — gmand@lowell.edu — the LDT instrument-interface expert (worked with the **RIMAS** and **EXPRES** teams on the same interface); TCS simulator access and procedure; AOS simulator status. Arranged the user's VPN account (Mar 2025)
 - Dyer Lytle — dlytle@lowell.edu (WebRat login)
 - Stephen Levine — sel@lowell.edu
+- Kyler Kuehn — kkuehn@lowell.edu — Director of Science, Technology & Operations (runs the general WILDS meetings with Sagi Ben-Ami)
+
+**How LDT frames the instrument interface** (Georgi/Stephen, Mar 2025): instruments exchange XML packets with the telescope via the broker and the MCB (targets, focus, offsets out; telescope/dome/pointing/environment status in). Language-agnostic — LDT has instrument GUIs in Python, LabVIEW and Java. Lowell-built instruments use a UI talking to backend services over the broker; DeVeny is the reference: https://confluence.lowell.edu/display/LDTOI/DeVeny+Optical+Spectrograph and http://www2.lowell.edu/users/tbowers/DevenyManualv18.pdf
+
+**VPN access is personal:** the Lowell VPN account is in the user's name. Georgi asked (2025-05-09) whether other Weizmann people can use it; unresolved — others likely need their own account via Lowell IT
 
 ---
 
