@@ -9,3 +9,4 @@
 - [Memory Location](feedback_memory_location.md) — Memory, plans and notes go in this wilds-claude repo, not ~/.claude
 - [Dev Environment](project_dev_environment.md) — wilds-workspace repo (workspace + setup.sh); shared Python 3.14 venv at WILDS/.venv; wilds namespace package; archon from PyPI
 - [Pull Requests](feedback_pull_requests.md) — WILDS changes go on a feature branch + GitHub PR, never direct to main/master
+- Simulator test log: `../sim-tests.md` — dated sessions against the LDT TCS simulator, setup reference, open LIG questions
