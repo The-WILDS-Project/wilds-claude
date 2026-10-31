@@ -7,6 +7,8 @@ type: reference
 **Access needs the Lowell VPN.** Off-VPN, `confluence.lowell.edu` resolves but connections
 time out. Verified working on the VPN 2026-10-31.
 
+**GitHub on the VPN:** the `gh` CLI fails TLS verification while connected ("certificate is not valid for any names"); plain `curl` to github.com works. Disconnect the VPN for `gh` work (PRs, merges).
+
 **Token:** personal access token `firstone`.
 - Mac: `WILDS/.wilds-vault/LDT-Confluence.txt` (outside every repo — never commit it)
 - Windows: `y:/MAST/.mast-vault/LDT Confluence.txt`

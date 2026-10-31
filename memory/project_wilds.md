@@ -34,6 +34,7 @@ The codebase is the `archon` Python actor framework (originally from SDSS), bein
 - **XML serialization:** `pydantic-xml` v2.19+
 
 ### Broker Hosts
+- **Hostnames on the VPN:** Lowell IT requires internal machines to be addressed as `<host>.lowell.local`, not `.lowell.edu` (they have no external IPs) — per Tim, 2026-04-28. E.g. the TCS-simulator VNC host is `nysa.lowell.local` (VNC password: ask Tim; not recorded here)
 - **Real LDT broker (Anderson Mesa):** hostname `joe`, STOMP port 61613 (no auth required)
 - **Test broker (Mars Hill):** `tanagra.lowell.edu`, port 61616 (OpenWire) — use STOMP port 61613 for Python
   - Admin UI: http://tanagra.lowell.edu:8161/admin/topics.jsp (admin/admin)
@@ -119,6 +120,19 @@ agents_to_monitor:
 - **LOUI** — Java/Eclipse RCP observer UI
 - **JOE** — Java Operation Executive (drives OMS motors, publishes telemetry to broker)
 
+### Locutus — LDT metadata aggregator (for FITS headers)
+Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on request, returns a named **FITS dictionary**: per keyword `val`, `comment`, `valid` (false = could not obtain; value is then the default). It does not write FITS files.
+- Broker topics (facility broker `joe`): `lorax.ldt.locutus.inforequest` → `.infobroadcast` (readiness + dictionary names); `lorax.ldt.locutus.dictrequest` → `.dictresponse`
+- Asynchronous: subscribe to the response topic first; filter responses on both `recipient` and a fresh `request_id` (the response topic is shared)
+- Request close to header finalisation; keep the dictionary name and its `KWDICT` entry in the product
+- Dictionaries are TOML files in Lorax-TNG `lorax/locutus/fits_dicts` (repo is **private**); existing: `deveny_sv`, `ldt_facility`, `ldtboresight_*`. WILDS would need its own (e.g. `wilds_*`) — ask LIG; new source topics must be added to Locutus's `topics_to_monitor` by its owner
+- Spec: `locutus_fits_dictionary_guide.rst` (Tim's email of 2026-09-08); local copy in `wilds-bridge/docs/`, untracked
+- **Implication:** WILDS may not need to assemble FITS headers from five telemetry topics itself — request `ldt_facility` (+ a WILDS dictionary) at readout
+
+### Open questions from Tim (unanswered)
+- Will WILDS integrate telescope slewing into its own software, or rely on LDT facility tools? Both models are used at LDT (2026-04-30). The rotator/slit angle is only settable via the target command, which argues for WILDS slewing itself.
+- AOS simulator was offline pending updates (2026-04-30) — ask **Georgi** for status
+
 ### LIG Contacts
 - **Timothy Ellsworth-Bowers (Tim)** — tbowers@lowell.edu (user's primary LDT contact)
 - Ryan Hamilton — rhamilton@lowell.edu (LDT software; MCB/command path questions)
@@ -173,7 +187,7 @@ Three main components, all running on the instrument computer:
 2. **LDT Bridge** (stomp.py/ligmos → ActiveMQ STOMP:61613) — subscribe to telemetry topics, publish wilds.loisTelemetry, send TCS commands
 3. **WILDS GUI** (Django + Django Channels, ASGI) — TO-facing web interface
 
-FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon internal state.
+FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon internal state. Alternative now available: request the facility keywords from Locutus (see above).
 
 ### Singleton Control Objects
 - **Telescope** — wraps TCS commands (offsets, focus, etc.) via LDT Bridge
