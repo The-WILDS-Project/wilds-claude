@@ -20,4 +20,3 @@ Two Samba (Ubuntu) servers on the Weizmann network (`*.weizmann.ac.il`), SMB on 
   ```
   `mount_smbfs` error messages echo the URL with the password, so pipe output through `sed` to mask it.
 - `mast-ns-control` also has `mast-provisioning`: "MAST provisioning payloads (read-only; units pull from here)".
-- `//last0/LAST-CONTAINER` doesn't exist for guest or `mast`. `last0` lists only `catalogs`, `print$` and `IPC$`.
