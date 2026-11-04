@@ -78,7 +78,7 @@ The codebase is the `archon` Python actor framework (originally from SDSS), bein
 
 **Publish (commands):**
 
-- `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV` — telescope offsets (XML)
+- `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV` — **all TCS commands from instruments**: telescope offsets and full science targets (Tim, 2026-11-02)
   - Reply on: `TCS.TCSSharedVariables.TCSLowLevelStatusSV.TCSTcsCommandResponseSV`
   - **MCB ISSUE (2026-04-29):** Broker→SVE direction causes MCB fault (LabVIEW cluster type mismatch). MCB fault kills ALL topic bridging. Publishing works; TCS receipt is unconfirmed. Need to ask Tim/Ryan about correct command path.
   - Three XML command types (root tag varies):
@@ -86,10 +86,9 @@ The codebase is the `archon` Python actor framework (originally from SDSS), bein
     - `<scienceTargetClearOffset>`: commandID, num2: User|Handset
     - `<scienceTargetAbsorbOffset>`: commandID, num2: User|Handset — bakes offset into target coords
 
-- `TCS.TCSSharedVariables.TCSLowLevelStatusSV.NewScienceTargetSV` — slew to new science target
-  - Root tag: `<newScienceTarget>` containing demandRADec, pointingOriginX/Y, scienceTargetConfiguration (fracrate, rotator {rotPA, rotatorFrame}, target {RA/Dec, proper motion, parallax, rv, targetName, difftrack}, wl_microns), trackID
+- **Science target (slew, rotator):** send a full `ScienceTargetConfiguration` to `TCSTcsCommandSV` (above), **not** to `TCSLowLevelStatusSV.NewScienceTargetSV`. That one is TCS → broker telemetry of the current target; publishing to it reached the broker but not the TCS (2026-10-31). `Telescope.slew_to` in wilds-bridge still uses the wrong topic. Content, as in `newScienceTarget`: `<newScienceTarget>` containing demandRADec, pointingOriginX/Y, scienceTargetConfiguration (fracrate, rotator {rotPA, rotatorFrame}, target {RA/Dec, proper motion, parallax, rv, targetName, difftrack}, wl_microns), trackID
 
-- **Rotator:** no standalone command — JIRA TCSD-131 folded it into the target command's `rotPA` (0–360°, E of N; the slit's sky PA) and `rotFrame`. `target` (TCS default) holds the field still on the instrument; `fixed` tracks in Az/El (sky rotates). `rotoffset iaa` (alignment angle) and `mccrot*` (move/stop/stow/track) exist as TCS commands but aren't on the broker interface — ask LIG whether instruments may use them. Source: TCS External Interface Definitions DCT-0720S-005-I §3.3.3.2, 3.6.3 (see [[reference_confluence]])
+- **Rotator:** no standalone command — JIRA TCSD-131 folded it into the target command's `rotPA` (0–360°, E of N; the slit's sky PA) and `rotFrame`. **How LDT software rotates** (Tim, 2026-11-02): take the latest `NewScienceTarget` from TCS telemetry, build a `ScienceTargetConfiguration` from it replacing only the rotator (`rotPA`, `rotatorFrame`), send it to `TCSTcsCommandSV`; this keeps offsets and differential rates. "Our TCS does not, at present, expose a direct rotator-change API." `target` (TCS default) holds the field still on the instrument; `fixed` tracks in Az/El (sky rotates). `rotoffset iaa` (alignment angle) and `mccrot*` (move/stop/stow/track) exist as TCS commands but aren't on the broker interface — ask LIG whether instruments may use them. Source: TCS External Interface Definitions DCT-0720S-005-I §3.3.3.2, 3.6.3 (see [[reference_confluence]])
 
 - **AOS Focus commands** — plain-text single-value messages (NOT XML), units **meters**:
   - `AOS.AOSSubDataSV.AbsoluteFocusOffset` — e.g. `3.1E-3`
@@ -129,8 +128,14 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 - Spec: `locutus_fits_dictionary_guide.rst` (Tim's email of 2026-09-08); local copy in `wilds-bridge/docs/`, untracked
 - **Implication:** WILDS may not need to assemble FITS headers from five telemetry topics itself — request `ldt_facility` (+ a WILDS dictionary) at readout
 
+### Access and roles at LDT (Tim, 2026-11-02)
+- **No authentication of TCS commands:** they can come from anywhere on the local network, from any actor. The TO can lock out external commands at the TCS, or allow them.
+- Observing machines use a **shared role-based observer login**; remote observers VNC into them and agree with the TO over Zoom before commanding. "Good actor" model.
+- **EXPRES** runs a locally hosted web GUI — Tim's suggested model for WILDS (hosted at LDT, VPN only); how observers/spectators get access is up to us. RIMAS uses a LabVIEW GUI on a local Windows machine.
+- **WILDS decision (2026-11-04):** no user accounts; one control lease granted by the TO with a pairing code — see `plans/control-and-gui.md` §3.11.
+
 ### Open questions from Tim (unanswered)
-- Will WILDS integrate telescope slewing into its own software, or rely on LDT facility tools? Both models are used at LDT (2026-04-30). The rotator/slit angle is only settable via the target command, which argues for WILDS slewing itself.
+- Will WILDS integrate telescope slewing into its own software, or rely on LDT facility tools? Both models are used at LDT (2026-04-30). The rotator/slit angle is only settable via the target command, which argues for WILDS slewing itself. (Our plan answers: WILDS slews itself.)
 - AOS simulator was offline pending updates (2026-04-30) — ask **Georgi** for status
 
 ### LIG Contacts

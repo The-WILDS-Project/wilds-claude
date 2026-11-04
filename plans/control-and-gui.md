@@ -1,6 +1,7 @@
 # Plan: wilds-control API and wilds-gui panels
 
-*Status: draft for discussion, 2026-10-31. Nothing here is implemented yet.*
+*Status: draft for discussion, 2026-10-31; updated 2026-11-04 with Tim's answers on the
+rotator and on users. Nothing here is implemented yet.*
 
 ## 1. Principles
 
@@ -11,7 +12,9 @@
 - **WILDS drives its own workflow** and talks to LDT only through the ActiveMQ broker
   (facility broker `joe`; test broker `tanagra`). This answers Tim's open question: WILDS
   integrates target submission into its own software.
-- **One controller, many viewers.** One session holds control; others are read-only.
+- **One controller, many viewers, no user accounts.** Anyone who can reach the GUI (VPN
+  only) may watch. One browser session at a time holds the *control lease*; the Telescope
+  Operator grants it (§3.11).
 - **Every device has a simulator** (TCS on nysa, guide-camera image simulator, MCS2 SCPI
   server, Archon stub), so the GUI can be built before hardware arrives.
 - **Measured constants are configuration, never code**: plate scale, slit pixel, IAA,
@@ -23,12 +26,12 @@
 
 | Kind | Form |
 |---|---|
-| Snapshot | `GET /status`: one model with telescope, instrument, cameras, jobs and the controlling session |
+| Snapshot | `GET /status`: one model with telescope, instrument, cameras, jobs and the control lease |
 | Live updates | `GET /status/stream` (SSE): `status` every 1 s, plus `job` and `log` events when they happen |
 | Short command | `POST`/`PUT` returns `200` with the resulting state |
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
 | Jobs | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel`. States: queued → running → done, failed or cancelled |
-| Control | `POST /session/control` (take), `DELETE /session/control` (release) |
+| Control | `POST /control/requests` (request, returns a pairing code), `DELETE /control` (release); TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
 | Configuration | `GET /config`, `GET`/`PUT /config/{component}`, `GET /config/{component}/schema`, `GET /config/{component}/history` (see §3.10) |
 | Video | `WS /guide-camera/stream`: binary JPEG frames, each preceded by a JSON metadata frame |
 
@@ -68,7 +71,8 @@ list, submit, and a "slewing / in position" indicator.
 
 | Dir | Topic | Content | Notes |
 |---|---|---|---|
-| → | `TCS…TCSLowLevelStatusSV.NewScienceTargetSV` *(path unresolved)* | `newScienceTarget` XML: `demandRADec`, `scienceTargetConfiguration` (`rotator.rotPA`, `rotatorFrame=Target`, `wl_microns`, `fracrate`, target block), `pointingOriginX/Y`, `trackID` | **Blocked:** on 2026-10-31 this reached the broker but not the TCS. In the default MCB configuration this topic only flows TCS → broker. Ask LIG which topic CAT/OTL use; it may be `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV`. |
+| → | `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV` | a full `ScienceTargetConfiguration`: target block, `rotator` (`rotPA`, `rotatorFrame=Target`), `wl_microns`, `fracrate`, `pointingOriginX/Y`, `trackID` | **Topic confirmed by Tim (2026-11-02).** Our 2026-10-31 attempt went to `TCSLowLevelStatusSV.NewScienceTargetSV`, which is TCS → broker only, so it never reached the TCS; `Telescope.slew_to` in wilds-bridge must change topic. First try on nysa with Georgi: the April test on this topic faulted the MCB. |
+| ← | `TCS…TCSLowLevelStatusSV.NewScienceTargetSV` | the TCS's current `newScienceTarget` | The starting point for re-sending the target (§3.5, §3.3) |
 | ← | `TCS…TCSLowLevelStatusSV.TCSTcsCommandResponseSV` | command result, `tcsErrorResponse` | Accept or reject |
 | ← | `TCSTcsStatusSV` | `pointingPositions.demandRADec`, `targetName`, `inPositionIsTrue`, `externalTargetCfgCmdPreviewIsTrue` | Confirms arrival. With preview on, the operator must approve. |
 
@@ -123,15 +127,23 @@ events (focus, HFD) and the final fit; `POST /focus` `{offset_m, relative}` (man
 
 ### 3.5 Slit rotation
 
-There is **no standalone rotator command** (JIRA TCSD-131). The slit's sky PA is set by
-re-sending the target with a new `rotPA`, with `rotatorFrame=Target` to hold the field
-still on the slit.
+There is **no standalone rotator command** (JIRA TCSD-131; confirmed by Tim, 2026-11-02:
+"Our TCS does not, at present, expose a direct rotator-change API"). The slit's sky PA is
+set by re-sending the whole target. LDT's own software does it as read, modify, write:
+
+1. Take the latest `NewScienceTarget` from TCS telemetry.
+2. Build a `ScienceTargetConfiguration` from it, replacing only the rotator (`rotPA`,
+   `rotatorFrame`; `Target` holds the field still on the slit).
+3. Send it to `TCSTcsCommandSV`.
+
+Copying everything else preserves any offsets and differential tracking rates.
 
 **LDT messages**
 
 | Dir | Topic | Content | Notes |
 |---|---|---|---|
-| → | as in §3.2 | the target re-sent with a new `rotPA` | Inherits §3.2's blocker. LIG: is the TCS "Rot Offset" command usable over the broker instead? |
+| ← | `TCS…TCSLowLevelStatusSV.NewScienceTargetSV` | the current target | Step 1. If it's stale or missing, refuse rather than guess. |
+| → | `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV` | the same target with a new `rotator` | As in §3.2, including the MCB caution |
 | ← | `TCSTcsStatusSV` | `objectPA.EqPA` (slit sky PA), `currentRotatorPositions.rotPA` (mechanical), `rotIPA` (demanded), `iaa`, `inPositionRotIsTrue`, `limits.timeToRotLimit_min`, `rotCurrentWrap` | Semantics verified live, 2026-10-31 |
 
 Common choices: parallactic angle (from `currentParAngle`) or a user PA.
@@ -216,15 +228,15 @@ applies to hardware and procedures.
 model in the backend. wilds-control validates them, stores them (a versioned file per
 component), and applies them to the device. The Django panels render their forms from
 `GET /config/{component}/schema`, the model's JSON Schema, so fields, units, limits and
-help text are defined once, in the backend. Django's own database holds only GUI matters:
-users, roles and the observing log.
+help text are defined once, in the backend. Django's own database holds only the
+observing log; there are no user accounts (§3.11).
 
 **Three kinds of setting**, shown separately in each panel:
 
 | Kind | Examples | Who may change | When it applies |
 |---|---|---|---|
-| Operational | guide-camera exposure, gain; slit presets | operator | immediately, or rejected with `409` if the device is busy |
-| Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | engineer (commissioning mode) | on save; every change logged with user and time, and revertible |
+| Operational | guide-camera exposure, gain; slit presets | the control holder | immediately, or rejected with `409` if the device is busy |
+| Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | the control holder, in engineering mode | on save; every change logged with the holder's name and the time, and revertible |
 | Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | file only, not editable in the GUI | on restart |
 
 **Components and their settings**
@@ -251,16 +263,77 @@ users, roles and the observing log.
 `GET`/`POST`/`DELETE /config/slit/presets[/{name}]` and `POST /slit/preset/{name}`
 (move to a preset).
 
+### 3.11 Control and access
+
+**LDT's model** (Tim, 2026-11-02): the TCS doesn't authenticate commands; anything on the
+local network can send them. Observing machines use a shared, role-based observer login,
+and remote observers VNC in and agree with the Telescope Operator (TO) over Zoom before
+commanding the telescope. The TO can lock out external commands at the TCS. EXPRES, with a
+web GUI hosted at LDT, is the suggested model for WILDS; how observers and spectators get
+access is up to us. Operations rely on a "good actor" model.
+
+**WILDS keeps no user accounts.**
+
+- **Viewers:** anyone who can reach the GUI. It is hosted at LDT and reachable only over
+  the VPN.
+- **Identity:** an anonymous Django session (cookie) per browser, plus a name the person
+  types (e.g. "Arie (Rehovot)"), kept in the browser. It's a label for screens and the log,
+  not authentication.
+- **The control lease:** one browser session at a time holds it. wilds-control issues and
+  checks the lease token on every command and configuration change, so scripts or a second
+  GUI can't bypass it. Django shows the prompts and keeps the presence heartbeat.
+
+**Granting control (pairing code):**
+
+1. The requester clicks *Request control*; their screen shows a short code (`K7-42`).
+2. On Zoom they tell the TO their name and code.
+3. The TO's page lists pending requests with names and codes; the TO approves the match.
+
+The name proves nothing; the code ties the approval to the browser of the person on the
+call. If someone already holds control, the TO's approval preempts them and they are told
+who has it now.
+
+**The TO page** is the only credentialed part: a shared role passphrase set in deployment
+configuration (preferred), or an allowlist of TO console hosts. A second passphrase for an
+engineer role can follow; that is configuration, not user management.
+
+**Rules:**
+
+- **Automatic refusal or deferral:** while an exposure or acquisition runs, a new request
+  shows why ("exposure in progress, 4 min left") and can be queued until the job ends. The
+  TO can still override.
+- **Running jobs at handover** continue under the new holder rather than being aborted;
+  the new holder may cancel them.
+- **Lost holder:** if the holder's browser stops sending heartbeats, the lease lapses after
+  a timeout, so a closed laptop can't lock everyone out.
+- **Same browser, second tab:** shares the lease; no prompt.
+- **Engineering mode** (a TO-page switch, for daytime commissioning without a TO): anyone
+  may take control; changes to calibration settings are allowed.
+- **Audit:** every request, grant, refusal, preemption and lapse is logged with the typed
+  name, time and reason.
+
+**Shown on every page:** "WILDS control: held by X" and, if the TCS reports it, whether
+the TCS is accepting external commands. The first time someone takes control each night,
+the GUI reminds them to confirm with the TO before commanding the telescope.
+
+**LDT messages:** none for the lease itself. ← `TCSTcsStatusSV` for the TCS's
+external-command lockout, if it's there (field to be identified).
+
+**Endpoints:** `POST /control/requests` `{name}` → `{request_id, code}`;
+`GET /control/requests` (TO); `POST /control/requests/{id}/approve` and `/refuse`
+`{reason}` (TO); `DELETE /control` (release); `PUT /control/mode` `{engineering}` (TO);
+`POST /control/heartbeat`. TO endpoints need the TO passphrase.
+
 ## 4. Order of work
 
 | # | Step | Testable with | Blocked by |
 |---|---|---|---|
 | 1 | Status model and stream; GUI status panel. `TelescopeStatus` falls back to `TCSTcsStatusSV`. | TCS simulator, now | none |
 | 2 | Guide-camera simulator and live view with overlays | image simulator | none |
-| 3 | Jobs framework and control session | unit tests | none |
+| 3 | Jobs framework and the control lease, with the TO page | unit tests | none |
 | 3a | Configuration framework (models, storage, history, schema endpoints) and the generic Django form renderer; first panels for the guide camera and slit presets | simulators | none |
 | 4 | Slit width, lamps and ADC panels | MCS2 SCPI simulator | lamp and stage controllers for the lamps (TBD) |
-| 5 | Target submission and slit rotation | TCS simulator | **LIG: target path** |
+| 5 | Target submission and slit rotation (`TCSTcsCommandSV`; fix `slew_to`'s topic) | TCS simulator | a session on nysa with Georgi, in case the MCB faults |
 | 6 | Acquisition | TCS simulator and image simulator | **LIG: offset path (MCB fault)**; commissioning values |
 | 7 | Autofocus | AOS simulator | **AOS simulator (Georgi)** |
 | 8 | Science exposures and Locutus headers | Archon stub; Locutus on `joe` | STA ACF; hardware; a WILDS Locutus dictionary |
@@ -268,35 +341,41 @@ users, roles and the observing log.
 
 ## 5. Questions for LIG
 
-1. Which topic and format do CAT and the OTL use to send a science target? Should
-   `NewScienceTargetSV` be broker → TCS on nysa's MCB?
-2. How should instruments send offsets without faulting the MCB (the April `TCSTcsCommandSV` issue)?
-3. Is a rotator-only change (the TCS "Rot Offset") possible over the broker?
-4. Must the outer `demandRADec` values be integers? Does `pointingOriginX/Y` override the
+Answered by Tim (2026-11-02):
+
+- *Which topic carries a science target?* `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV`,
+  with a full `ScienceTargetConfiguration`.
+- *Is a rotator-only change possible?* No; re-send the target with a new rotator (§3.5).
+- *Users and roles?* No central authentication; role-based observer logins, coordination
+  with the TO, and access to a WILDS web GUI left to us (§3.11).
+
+Still open:
+
+1. How should instruments send to `TCSTcsCommandSV` without faulting the MCB (April)?
+   Was that a malformed message, or something in the MCB?
+2. Must the outer `demandRADec` values be integers? Does `pointingOriginX/Y` override the
    instrument's pointing origin?
-5. The AOS simulator's status, for autofocus testing.
-6. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
+3. Which `TCSTcsStatusSV` field, if any, shows that the TO has locked out external
+   commands?
+4. The AOS simulator's status, for autofocus testing.
+5. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
    entry, and a Locutus FITS dictionary for WILDS.
-7. What does `rotI` mean in an instrument definition?
-8. User roles: should WILDS use LDT's Telescope Operator and Engineer roles, or add an
-   Instrument Operator? Is there an LDT account or authentication system WILDS should
-   use, rather than its own Django accounts?
+6. What does `rotI` mean in an instrument definition?
+7. Will a TO-page passphrase and the pairing-code flow (§3.11) suit the TOs?
 
 ## 6. Open decisions (ours)
 
-- **Users and roles: to be agreed with LIG.** LDT uses a *Telescope Operator* and an
-  *Engineer*. The TCS shows "User Mode: Operator" with an "Engineer Log in", and
-  `TCSTcsStatusSV.accessMode` reports it. WILDS may adopt those roles as they are, or add
-  an *Instrument Operator* (runs WILDS: exposures, acquisition, slit; no telescope
-  engineering). Read-only viewers are always allowed. Until agreed, the plan's
-  "operator" and "engineer" stand for whichever roles we settle on.
-- **How wilds-control trusts Django's users.** One option: Django issues a short-lived
-  signed token for the logged-in user and role, and wilds-control checks it on commands
-  and configuration changes.
+- **Lease details:** heartbeat interval and lapse timeout; whether engineering mode needs
+  the TO passphrase to switch on (yes, as drafted) and whether it switches off by itself at
+  sunset.
 
 ## 7. Decided
 
-- **GUI: Django** (2026-10-31). Django (`wilds-gui`, :8000) serves the pages and handles
-  user accounts, roles (as agreed with LIG; see §6) and the observing log. The browser
-  talks to wilds-control (:8001) directly over REST, SSE and WebSocket for commands, status,
-  configuration and video. Django keeps no hardware state.
+- **GUI: Django** (2026-10-31). Django (`wilds-gui`, :8000) serves the pages and keeps the
+  observing log. The browser talks to wilds-control (:8001) directly over REST, SSE and
+  WebSocket for commands, status, configuration and video. Django keeps no hardware state.
+- **No user accounts** (2026-11-04). Anonymous browser sessions with a typed name; one
+  control lease, granted by the TO with a pairing code; a shared passphrase for the TO
+  page. wilds-control enforces the lease (§3.11).
+- **Target and rotator path** (2026-11-04, from Tim): `TCSTcsCommandSV`, re-sending the
+  current target with the changed fields (§3.2, §3.5).
