@@ -43,7 +43,10 @@ The VNC password goes in through an environment variable, never on the command l
   `TCS.TCSSharedVariables.TCSLowLevelStatusSV.NewScienceTargetSV`. It appeared on the
   broker; the TCS demand did not change and no command response came back.
 - The MCB did **not** fault (unlike the April test on `TCSTcsCommandSV`).
-- Cause (probable): in the MCB's default configuration (Confluence "MCB Configuration")
+- **Cause (confirmed by Tim, 2026-11-02): wrong topic.** Instruments send targets as a full
+  `ScienceTargetConfiguration` to `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV`;
+  `NewScienceTargetSV` is the TCS's telemetry of its current target. Consistent with that:
+  in the MCB's default configuration (Confluence "MCB Configuration")
   `NewScienceTargetSV` is in the *Shared Variables Consumer* list, i.e. TCS → broker only.
   Broker → TCS topics are the AOS focus topics and `TCS.TCSSharedVariables.TCSSubData.*`.
   The v78 interface doc nonetheless lists `NewScienceTargetSV` as a command topic.
@@ -51,8 +54,9 @@ The VNC password goes in through an environment variable, never on the command l
 
 **Tracking (GUI target RA 06:05, Dec +20, frame Target, PA 0):**
 - Az 181–184°, El 75.3°, airmass 1.03, guide mode `OpenLoop`; all limit indicators green.
-- Az and El in position; **rotator never in position** (error 0.0006–0.002°, just above
-  tolerance), so overall `inPositionIsTrue` stayed false.
+- Az and El in position at once; the rotator lagged (error 0.0006–0.002°, just above
+  tolerance), holding overall `inPositionIsTrue` false for a while. It did reach in
+  position later in the session (In Position went green).
 - Rotator semantics, from the data: `currentRotatorPositions.rotPA` is the *mechanical*
   angle (moved −2.0° while the parallactic angle moved +2.0°); `objectPA.EqPA` is the actual
   sky PA of the slit (stayed 0); `rotIPA` is the demanded sky PA; IAA = 185.2.
@@ -74,10 +78,12 @@ The VNC password goes in through an environment variable, never on the command l
 - GitHub over the Lowell VPN is unreliable (TLS interception).
 
 **Open questions for LIG (Georgi / Tim / Ryan):**
-1. How do CAT / the Observer Target List send a science target to the TCS — which topic
-   and format? Is `NewScienceTargetSV` meant to be broker → TCS on nysa's MCB?
-2. Is the rotator never reaching in-position while tracking a simulator artefact, or
-   should instruments not wait on overall `inPositionIsTrue`?
+1. ~~Which topic and format send a science target?~~ **Answered (Tim, 2026-11-02):** a full
+   `ScienceTargetConfiguration` to `TCSSubData.TCSTcsCommandSV`. Rotator changes re-send the
+   current target with a new rotator. Next session: retry on that topic, with Georgi at
+   hand in case the MCB faults as in April.
+2. ~~Is the rotator never reaching in-position a simulator artefact?~~ Moot: it got there,
+   just slower than Az/El.
 3. Does the outer `demandRADec` accept decimal values (`6.0`, `20.0`) or must they be
    integers, as in the documented example?
 4. Do `pointingOriginX/Y` in a target command override the selected instrument's pointing
