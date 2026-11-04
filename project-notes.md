@@ -337,8 +337,8 @@ A full night's data (e.g., sunset ~01:00 UT to dawn ~13:00 UT) stays under one r
 - **RabbitMQ ↔ ActiveMQ:** Use STOMP (port 61613) directly from Python — no bridge needed.
   sdss-clu uses AMQP/RabbitMQ internally; the LDT bridge is a separate async process using `stomp.py`.
 - **Stage control:** DeVeny stages driven by JOE via OMS cards. WILDS needs own mechanism
-  or agreement with LIG on who drives WILDS mechanisms. WILDS stages: 3 SmarAct (slit width + 2 ADC) on one MCS2-C-0006 (3-ch, Ethernet, SCPI) —
-  and an In/Out stage for each of the 2 calibration lamps (lamp stage controller TBD).
+  or agreement with LIG on who drives WILDS mechanisms. WILDS stages: 5 SmarAct (slit width, 2 ADC, 2 lamp In/Out) on one 6-channel MCS2
+  (Ethernet, SCPI; decided 2026-11-04, replacing the 3-channel MCS2-C-0006).
 - **FITS headers:** Subscribe to `tcs.loisTelemetry` and other topics; inject keywords at
   exposure start via `expose --header` JSON option (or extend the actor).
 - **`wilds.loisTelemetry`:** New topic schema to be agreed with LIG. Should include

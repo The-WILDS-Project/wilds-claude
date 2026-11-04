@@ -183,9 +183,10 @@ Each instrument has an entry in the TCS (TCS Command → Instrument Name). DeVen
 ### Motorized Stages (confirmed by user 2026-10-13)
 - **ADC:** 2 stages on a SmarAct MCS2. Driven autonomously by TCS telemetry (parallactic angle + elevation)
 - **Slit:** a stage sets the slit **width**; the spectrograph (science) cameras see the light that passes through the slit. **SmarAct** stage (confirmed by user 2026-10-25)
-- **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. Stage controller and power switching **TBD**. Lamp types not yet known
+- **Calibration lamps:** **2 lamps**, each switched on/off **and** moved In/Out of the optical path by its own stage. The lamp stages are SmarAct too, on the shared MCS2 (ch 3, 4; user, 2026-11-04). Power switching **TBD**. Lamp types not yet known
 - **Shutter:** single, driven by the Archon controller
-- **Three SmarAct stages in total: slit + 2 ADC**, all on **one MCS2-C-0006** — tabletop housing, 3 channels, **Ethernet** interface (decided by user 2026-10-25). Channels: **0 = slit, 1 = ADC 1, 2 = ADC 2** (so ADC channel = `AdcIndex`)
+- **Five SmarAct stages: slit, 2 ADC, 2 lamp In/Out**, all on **one 6-channel MCS2** with **Ethernet** (user, 2026-11-04; replaces the 3-channel MCS2-C-0006 decided 2026-10-25; 6-channel part number to confirm). Channels: **0 = slit, 1 = ADC 1, 2 = ADC 2** (so ADC channel = `AdcIndex`), **3 = lamp 1, 4 = lamp 2**, 5 spare
+- **Every stage has `presets: dict[str, int]`** (name → position in native MCS2 units: pm linear, n° rotary; API/GUI convert to mm/arcsec/deg) and **`close_enough: int`** — the tolerance for stages that stop a few ticks before/after the target while reporting it reached; also decides `at_preset` (user, 2026-11-04). Lamp stages require presets `in` and `out`
 - **Stage part numbers** (user, 2026-10-25):
   - Slit (ch 0): SmarAct `EX-0045566-000-CLS3232-4th` — CLS-3232 linear stage. CLS is newer than the 2018 MCS2 positioner-type list, so its MCS2 type code isn't in that list; `-4th` suffix not yet understood
   - ADC 1 & 2 (ch 1, 2): SmarAct `EX-0018664-003-SRM120-S` — SR-120-class rotary stage with S-sensor. Per the 2018 MCS2 Positioner Types list, SR120 maps to MCS2 type code **320** (`SR...T1S8S`, large rotary, single reference mark) — inferred, confirm against the controller's configured type
@@ -214,9 +215,9 @@ FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon
 ### Singleton Control Objects
 - **Telescope** — wraps TCS commands (offsets, focus, etc.) via LDT Bridge
 - **Focuser** — wraps focus commands
-- **ADC** — 2 channels of the shared MCS2-C-0006; manual control initially, auto mode using `currentParAngle` from TCS telemetry when confidence is established
-- **SlitStage** — slit width stage, 1 channel of the shared MCS2-C-0006 (one SCPI connection shared with ADC)
-- **CalibrationLamps (×2)** — power on/off + In/Out stage per lamp (controller TBD)
+- **ADC** — 2 channels of the shared MCS2; manual control initially, auto mode using `currentParAngle` from TCS telemetry when confidence is established
+- **SlitStage** — slit width stage, 1 channel of the shared MCS2 (one SCPI connection shared by all stages)
+- **CalibrationLamps (×2)** — power on/off (TBD) + In/Out stage per lamp (MCS2 ch 3, 4)
 - **ScienceCamera (×2)** — Archon VIS + UV CCD controllers
 - **GuideCamera** — ZWO ASI294-class slit-viewing camera
 
