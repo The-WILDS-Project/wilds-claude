@@ -22,7 +22,7 @@ rotator and on users. Nothing here is implemented yet.*
 - **Parfocal cameras**: the guide camera and the science cameras are parfocal by design, so
   focusing on the guide camera focuses the science cameras.
 
-## 2. API conventions (wilds-control, FastAPI on Hypercorn, :8001)
+## 2. API conventions (wilds-control, FastAPI on Uvicorn, :8001)
 
 | Kind | Form |
 |---|---|
@@ -588,7 +588,7 @@ Still open:
   `stage/{controller,stage}.py`; singletons created at startup and injected with
   `Depends`; pydantic `BaseModel` for all relevant classes. Details in
   `memory/project_control_conventions.md`.
-- **Server: Hypercorn** (2026-11-05), for HTTP/2; one worker. `main()` in `control/app.py`
-  parses argv and runs it. Browsers need TLS for HTTP/2, so the instrument computer needs a
-  real certificate; without one, telemetry moves to the per-tab WebSocket.
+- **Server: Uvicorn** (2026-11-05; reverses an earlier Hypercorn choice made for HTTP/2, which
+  is not needed); one worker. `main()` in `control/app.py` parses argv and runs it. Plain
+  HTTP/1.1, so keep the number of long-lived streams per tab low (6 connections per origin).
 - **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10).
