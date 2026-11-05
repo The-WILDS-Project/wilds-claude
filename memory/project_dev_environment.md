@@ -7,13 +7,22 @@ All WILDS repos share one venv at `/Users/blumzi/src/WILDS/.venv` (Python 3.14, 
 set up 2026-10-12. Each repo's `pyrightconfig.json` uses `venvPath: ".."`; the workspace file sets
 `python.defaultInterpreterPath` to `${workspaceFolder}/../.venv/bin/python`.
 
-**Why:** One environment with all four repos (bridge, solving, control, science-camera) installed
+**Development machine (user, 2026-11-05):** preliminary development is done on the user's Mac,
+until the SuperMicro instrument computer is bought and Ubuntu installed on it. So wilds-control
+must run on macOS as well as Linux:
+- no Linux-only assumptions: no hard-coded `/dev`, `/etc` or systemd paths; the config file and
+  data directories come from the TOML/argv; file watching via `watchfiles` (works on both);
+- hardware reached over the network (MCS2 SCPI, Archon) works from the Mac as is;
+- the ZWO ASI SDK has a macOS build; anything without one runs as its simulator on the Mac;
+- systemd units, TLS certificate and udev rules wait for the Ubuntu machine.
+
+**Why:** One environment with all the package repos (bridge, solving, control, gui, science-camera) installed
 editable, so cross-repo imports resolve.
 
 **How to apply:**
 - The tree is set up by the **`wilds-workspace`** repo (github.com/The-WILDS-Project/wilds-workspace, created 2026-10-30): `WILDS.code-workspace` (folder paths `../wilds-*`) plus `setup.sh`, which clones missing repos beside it and builds/refreshes the venv with the install command below. Change editor settings or the install list there, not in a loose file in `WILDS/`.
 - Install/reinstall with `uv pip install --no-sources --python .venv/bin/python -e ./wilds-bridge
-  -e ./wilds-solving -e ./wilds-control -e ./wilds-science-camera sdss-archon pytest pytest-asyncio ruff`.
+  -e ./wilds-solving -e ./wilds-control -e ./wilds-gui -e ./wilds-science-camera sdss-archon pytest pytest-asyncio ruff`.
   `--no-sources` is needed because `wilds-science-camera` points `sdss-archon` at `../archon`,
   which isn't checked out; archon comes from PyPI instead.
 - `wilds` is a PEP 420 namespace package: no repo may add `src/wilds/__init__.py`, or it shadows

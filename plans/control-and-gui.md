@@ -22,7 +22,7 @@ rotator and on users. Nothing here is implemented yet.*
 - **Parfocal cameras**: the guide camera and the science cameras are parfocal by design, so
   focusing on the guide camera focuses the science cameras.
 
-## 2. API conventions (wilds-control, FastAPI on :8001)
+## 2. API conventions (wilds-control, FastAPI on Hypercorn, :8001)
 
 | Kind | Form |
 |---|---|
@@ -31,13 +31,63 @@ rotator and on users. Nothing here is implemented yet.*
 | Short command | `POST`/`PUT` returns `200` with the resulting state |
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
 | Jobs | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel`. States: queued → running → done, failed or cancelled |
-| Control | `POST /control/requests` (request, returns a pairing code), `DELETE /control` (release); TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
+| Control | `POST /sessions`, `POST /control/requests` (request control), `DELETE /control` (release), `POST /control/engineering`; TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
 | Configuration | `GET /config`, `GET`/`PUT /config/{component}`, `GET /config/{component}/schema`, `GET /config/{component}/history` (see §3.10) |
 | Video | `WS /guide-camera/stream`: binary JPEG frames, each preceded by a JSON metadata frame |
 
 The Python client is generated from FastAPI's OpenAPI schema. It replaces the hand-written
 `client/api.py`, whose `/acquire/cancel` and `/solve` paths have no router behind them.
 The skeleton's `/telemetry` router becomes `/status`.
+
+### GUI stack and look (wilds-gui)
+
+The look and the component kit are **copied from the MAST GUI** (`The-MAST-project/MAST_gui`,
+mostly the same author), noting where each piece came from, and adapted. There is no shared
+package for now; one could follow if both GUIs keep changing the same parts.
+
+**Stack:**
+- Django;
+- Bootstrap 5.3 and Bootstrap Icons;
+- HTMX for page fragments and forms;
+- Alpine.js for live components.
+
+Every library is pinned to an exact version and served from Django's static files, never a
+CDN, so the GUI still loads over a slow VPN or from LDT without internet.
+
+**Taken from MAST:**
+- **Colour tokens:** the subdued info/success/warning/danger/primary/secondary palette, as
+  CSS variables, renamed `--mast-*` → `--ui-*`, and the severity classes for borders and text.
+- **Status dots** (ok / warning / error, with warning and error pulsing) and the pulsing
+  **activity heart**, whose tooltip lists what's running. Used for the TCS access badge, the
+  wilds-control link and running jobs.
+- **Toasts** for notices, the **confirm modal** (e.g. "Slew now" with Preview off), the
+  `x-tooltip` Alpine directive (for why a control is greyed out), and the link-status
+  dropdown.
+- **Layout:**
+  - an 80 px header with the Weizmann and WILDS logos;
+  - a collapsible sidebar and the main area for the multi-page `/io`;
+  - a single page with no sidebar for `/to`.
+- **Form and modal conventions:** horizontal `col-4` label, `col-8` field; Cancel on the
+  left, then the primary action.
+
+**Changed for WILDS:**
+- **Dark theme.** WILDS is used at night in a dark control room.
+  - Every colour is a variable with light and dark values.
+  - Bootstrap's `data-bs-theme` switches between them; dark is the default, and the choice
+    is remembered per browser.
+  - A dim red night mode may follow.
+- **No accounts:** sign-in, sign-up, the user menu, allauth and the site selector are
+  dropped. JS9 loads on the product-browsing pages, not per user.
+- **Live data** comes from wilds-control's SSE and WebSocket streams into Alpine
+  components, not from HTMX polling.
+- **Safe text:** session names are typed by anonymous visitors and shown on `/to`, so toasts,
+  tooltips and the confirm modal insert text with `textContent`, never as raw HTML. MAST's
+  versions insert HTML.
+- **The confirm dialog** is its own function returning a promise (`uiConfirm()`), rather
+  than replacing `window.confirm`, with Cancel left and OK right per the convention above.
+- **Clean-ups:** no global `* { margin: 0; padding: 0 }` reset (it works against
+  Bootstrap's spacing), fewer `!important` rules, and none of the stray editor `filepath`
+  comments.
 
 ## 3. Features
 
@@ -250,8 +300,12 @@ One Django panel per component, for viewing and changing the settings that wilds
 applies to hardware and procedures.
 
 **Who owns the configuration:** wilds-control. Each component's settings are a Pydantic
-model in the backend. wilds-control validates them, stores them (a versioned file per
-component), and applies them to the device. The Django panels render their forms from
+model in the backend. wilds-control validates them, stores them in its single TOML
+configuration file, and applies them to the device. A `Config` singleton re-reads the file
+when it changes (an invalid file is rejected whole and the running config kept), saves
+atomically, refuses a GUI save with `409` if the file changed on disk since it was loaded,
+and keeps a timestamped copy on every save; history and revert work on those copies, per
+component section. The Django panels render their forms from
 `GET /config/{component}/schema`, the model's JSON Schema, so fields, units, limits and
 help text are defined once, in the backend. Django's own database holds only the
 observing log; there are no user accounts (§3.11).
@@ -300,55 +354,167 @@ access is up to us. Operations rely on a "good actor" model.
 
 **WILDS keeps no user accounts.**
 
-- **Viewers:** anyone who can reach the GUI. It is hosted at LDT and reachable only over
-  the VPN.
-- **Identity:** an anonymous Django session (cookie) per browser, plus a name the person
-  types (e.g. "Arie (Rehovot)"), kept in the browser. It's a label for screens and the log,
-  not authentication.
-- **The control lease:** one browser session at a time holds it. wilds-control issues and
-  checks the lease token on every command and configuration change, so scripts or a second
-  GUI can't bypass it. Django shows the prompts and keeps the presence heartbeat.
+**Two GUIs**, served by Django under one host, so there's one origin and no CORS:
 
-**Granting control (pairing code):**
+- **`/to`, the Telescope Operator's page.** It shows instrument status and current
+  activities (information only) and the control panel:
+  - the current holder;
+  - the sessions requesting control, with name, short code and time of request;
+  - a count of read-only viewers, expandable into the full list.
 
-1. The requester clicks *Request control*; their screen shows a short code (`K7-42`).
-2. On Zoom they tell the TO their name and code.
-3. The TO's page lists pending requests with names and codes; the TO approves the match.
+  The TO grants control to exactly one session, or revokes it so nobody holds it. The page
+  shows "**engineering mode: <name> has control**" prominently and can revoke that too.
+- **`/io`, the Instrument Operator's GUI.** Multi-page, with tabbed panels for
+  calibration, operations, and browsing products and intermediates. Every session shows its
+  short code and its state: viewer, requesting, or in control. It has a *Request control*
+  button, which can be pressed again to re-apply.
 
-The name proves nothing; the code ties the approval to the browser of the person on the
-call. If someone already holds control, the TO's approval preempts them and they are told
-who has it now.
+For HTTP/2 over TLS the host needs a fully qualified name (e.g. `wilds.lowell.edu`); a bare
+`wilds` can't be given a certificate.
 
-**The TO page** is the only credentialed part: a shared role passphrase set in deployment
-configuration (preferred), or an allowlist of TO console hosts. A second passphrase for an
-engineer role can follow; that is configuration, not user management.
+**Sessions:**
+
+- **One per browser.** Tabs in the same browser share it, and its lease.
+- **Any number of read-only sessions, one holder.** Each session can come from anywhere:
+  - a browser on the wilds computer, locally or over VNC;
+  - a computer at Weizmann or elsewhere, over the VPN.
+
+  Where a session comes from gives it no rights, so a local or VNC browser is just another
+  session.
+- **Identity:** an anonymous Django session (cookie) plus a name the person types (e.g.
+  "Arie (Rehovot)"), kept in the browser. wilds-control gives each session a UUID
+  internally and a short code for people (`K7-42`). The name is a label for screens and the
+  log, not authentication.
+- **Dead sessions** drop off after a missed-heartbeat timeout. If a dead session held
+  control, the lease lapses and the TO page says so, so a closed laptop can't lock everyone
+  out.
+- **Read-only** means seeing everything (status, video, product and intermediate browsers)
+  while anything that changes state gets `403`.
+- **Viewer cap:** a configurable maximum number of sessions (e.g. 20), with a clear message
+  when it's reached, to protect the wilds computer.
+
+**The control lease:** one session at a time holds it. wilds-control issues and checks the
+lease token on every command and configuration change, so scripts or a second GUI can't
+bypass it.
+
+**Granting control (regular mode):**
+
+1. The instrument operator clicks *Request control*. The request appears on `/to`;
+   clicking again re-applies and moves it to the top.
+2. On Zoom they tell the TO their name and short code.
+3. The TO grants the matching session.
+
+The name proves nothing; the code ties the grant to the browser of the person on the call.
+Sessions appear in the TO's request list only when they ask. If someone already holds
+control, the grant moves it: the previous holder is told who has it now and drops to
+read-only immediately.
+
+**Engineering mode (superuser):** an `/io` session enters the engineering passphrase (set
+in the deployment configuration) and takes control without the TO's approval, e.g. for
+daytime commissioning. Because sessions can come from anywhere, the passphrase is the only
+gate. Engineering mode covers WILDS mechanisms only: stages, lamps, cameras and calibration
+settings. Commands to the TCS (targets, offsets, rotator, focus) still need a TO grant,
+since only the TO sees what the telescope is doing.
+
+**The TO page** is protected by its own shared passphrase, also in deployment configuration.
+Both passphrases are configuration, not user management.
 
 **Rules:**
 
 - **Automatic refusal or deferral:** while an exposure or acquisition runs, a new request
   shows why ("exposure in progress, 4 min left") and can be queued until the job ends. The
   TO can still override.
-- **Running jobs at handover** continue under the new holder rather than being aborted;
-  the new holder may cancel them.
-- **Lost holder:** if the holder's browser stops sending heartbeats, the lease lapses after
-  a timeout, so a closed laptop can't lock everyone out.
-- **Same browser, second tab:** shares the lease; no prompt.
-- **Engineering mode** (a TO-page switch, for daytime commissioning without a TO): anyone
-  may take control; changes to calibration settings are allowed.
-- **Audit:** every request, grant, refusal, preemption and lapse is logged with the typed
-  name, time and reason.
+- **Running jobs at handover** continue under the new holder rather than being aborted; the
+  new holder may cancel them.
+- **Audit:** every request, grant, refusal, handover, revoke, engineering-mode entry and
+  lapse is logged with the typed name, short code, time and reason.
 
-**Shown on every page:** "WILDS control: held by X" and, if the TCS reports it, whether
-the TCS is accepting external commands. The first time someone takes control each night,
-the GUI reminds them to confirm with the TO before commanding the telescope.
+**Many viewers, little load:**
 
-**LDT messages:** none for the lease itself. ← `TCSTcsStatusSV` for the TCS's
-external-command lockout, if it's there (field to be identified).
+- **Video:** each guide-camera frame is encoded to JPEG once and the same frame goes to
+  every viewer. Each WebSocket gets only the newest frame and stale ones are dropped, so a
+  slow VPN viewer gets a lower frame rate, not a growing delay, and never slows the holder.
+- **Viewer settings:** a viewer can choose a lower frame rate or JPEG quality. This is per
+  session and never changes the camera.
+- **Status:** one status model is built each second and sent to all sessions.
 
-**Endpoints:** `POST /control/requests` `{name}` → `{request_id, code}`;
-`GET /control/requests` (TO); `POST /control/requests/{id}/approve` and `/refuse`
-`{reason}` (TO); `DELETE /control` (release); `PUT /control/mode` `{engineering}` (TO);
-`POST /control/heartbeat`. TO endpoints need the TO passphrase.
+**Shown on every page:** "WILDS control: held by X" (or "engineering mode: X") and the
+TCS access badge (§3.12). The first time someone takes
+control each night, the GUI reminds them to confirm with the TO before commanding the
+telescope.
+
+**LDT messages:** none for the lease itself; the TCS access badge is in §3.12.
+
+**Endpoints:**
+
+- Sessions:
+  - `POST /sessions` `{name}` → `{session_id, code}`
+  - `POST /sessions/{id}/heartbeat`
+- Requests and release:
+  - `POST /control/requests` (request or re-apply)
+  - `DELETE /control` (the holder releases)
+  - `POST /control/engineering` `{passphrase}` (take control in engineering mode)
+- TO only (needs the TO passphrase):
+  - `GET /control/sessions` (holder, requests and viewers)
+  - `POST /control/requests/{id}/grant` and `/refuse` `{reason}`
+  - `POST /control/revoke`
+
+### 3.12 Telescope commands: access, preview and confirmation
+
+This applies to **every operation that changes telescope state**:
+- targets (`slew_to`) and slit rotation (`set_rotator`);
+- offsets (apply, clear, absorb);
+- focus (AOS);
+- the steps of acquisition and autofocus, and anything added later.
+
+They all go through one path in wilds-control rather than each handling it alone.
+
+**TCS access badge**, on every page and for every session, with or without control:
+
+| Part | Source |
+|---|---|
+| TCS state and health | `TCSTcsStatusSV` |
+| TCS user mode, Operator or Engineer (the TCS GUI's own login, §4.12 of the TCS manual; not a lockout) | `accessMode` |
+| External Command Preview on/off | `externalTargetCfgCmdPreviewIsTrue` |
+| External commands locked out by the TO | field to be identified (§5) |
+| Telemetry freshness | age of the last `TCSTcsStatusSV`; stale means the badge is grey or "unknown" |
+
+**External Command Preview** (TCS manual §5.4.2.1.7) is the TCS's own switch.
+- **On** (the default at TCS start-up): an external sidereal science target only fills the
+  TCS's preview panel; the telescope doesn't move until the TO accepts it.
+- **Off**: the target becomes current at once, and a tracking telescope slews immediately.
+
+Per the manual it covers science targets only, so a re-sent target (`set_rotator`) is
+previewed but offsets and focus presumably are not. Whether that holds is to be confirmed (§5).
+
+**Availability:** the status model carries a map with one entry per action, e.g.
+`{"slew": {"ok": false, "why": "TCS locked out external commands"}}`. GUIs grey out the
+control and show `why` as a tooltip. wilds-control enforces the same rules, with `403`
+(no lease) or `409` (state) and the same reason, so greying is a convenience, never the
+guard. A telescope action is unavailable when any of these apply:
+- there is no TO-granted lease (engineering mode doesn't count);
+- the TO has locked out external commands;
+- the TCS isn't in a state to accept the command;
+- telemetry is stale.
+
+**Effect label:** each control says what will happen.
+- **"Send to TO preview"** when the operation is previewed and Preview is on.
+- **"Applies immediately"** otherwise. A slew with Preview off asks for confirmation.
+- If Preview is unknown, assume the TO must approve.
+
+**Progress is confirmed from telemetry, never from sending.** Each operation is a job:
+
+`sent → waiting for TO (previewed only) → in progress → done`, or `not accepted` after a
+timeout. Each kind of operation has its own confirmation:
+
+| Operation | Confirmed by |
+|---|---|
+| target, rotator | `NewScienceTargetSV` and the status `targetName` change to ours, then `inPositionIsTrue`, and the rotator PA |
+| offsets | `offsetStatus` |
+| focus | AOS focus status (topic to be identified) |
+
+Every operation is logged with the session's name and code, the effect label shown, and the
+outcome.
 
 ## 4. Order of work
 
@@ -382,18 +548,19 @@ Still open:
 2. Must the outer `demandRADec` values be integers? Does `pointingOriginX/Y` override the
    instrument's pointing origin?
 3. Which `TCSTcsStatusSV` field, if any, shows that the TO has locked out external
-   commands?
+   commands? Does the lockout also cover offsets and AOS focus?
+8. Is a re-sent target that changes only the rotator previewed like a new target? Are
+   offsets and focus never previewed?
 4. The AOS simulator's status, for autofocus testing.
 5. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
    entry, and a Locutus FITS dictionary for WILDS.
 6. What does `rotI` mean in an instrument definition?
-7. Will a TO-page passphrase and the pairing-code flow (§3.11) suit the TOs?
+7. Will a TO-page passphrase and the short-code flow (§3.11) suit the TOs?
 
 ## 6. Open decisions (ours)
 
-- **Lease details:** heartbeat interval and lapse timeout; whether engineering mode needs
-  the TO passphrase to switch on (yes, as drafted) and whether it switches off by itself at
-  sunset.
+- **Lease details:** heartbeat interval and dead-session timeout; the viewer cap; whether
+  engineering mode ends by itself (e.g. at sunset, or when the TO grants control).
 
 ## 7. Decided
 
@@ -401,7 +568,27 @@ Still open:
   observing log. The browser talks to wilds-control (:8001) directly over REST, SSE and
   WebSocket for commands, status, configuration and video. Django keeps no hardware state.
 - **No user accounts** (2026-11-04). Anonymous browser sessions with a typed name; one
-  control lease, granted by the TO with a pairing code; a shared passphrase for the TO
+  control lease, granted by the TO with a short code; a shared passphrase for the TO
   page. wilds-control enforces the lease (§3.11).
+- **Two GUIs, one holder, many viewers** (2026-11-05): `/to` for the TO, `/io` for
+  instrument operators; any number of read-only sessions from anywhere (local, VNC, VPN);
+  engineering mode takes control with a passphrase, for WILDS mechanisms only, never TCS
+  commands (§3.11).
+- **One path for telescope commands** (2026-11-05): every telescope-state-changing
+  operation shows the TCS access badge and its effect ("Send to TO preview" or "Applies
+  immediately"), is greyed out with a reason when unavailable, and is confirmed from
+  telemetry rather than from sending (§3.12).
+- **GUI look copied from MAST** (2026-11-05): Django, Bootstrap 5.3, HTMX, Alpine.js; MAST's
+  palette and components, plus a dark theme, safe text, pinned and bundled libraries, and no
+  accounts (§2, "GUI stack and look").
 - **Target and rotator path** (2026-11-04, from Tim): `TCSTcsCommandSV`, re-sending the
   current target with the changed fields (§3.2, §3.5).
+- **Code structure** (2026-11-05): abstract base plus implementations per component (e.g.
+  `GuideCameraBase` → `ASICamera`, `SimulatedASICamera`), chosen by a deployment setting;
+  `stage/{controller,stage}.py`; singletons created at startup and injected with
+  `Depends`; pydantic `BaseModel` for all relevant classes. Details in
+  `memory/project_control_conventions.md`.
+- **Server: Hypercorn** (2026-11-05), for HTTP/2; one worker. `main()` in `control/app.py`
+  parses argv and runs it. Browsers need TLS for HTTP/2, so the instrument computer needs a
+  real certificate; without one, telemetry moves to the per-tab WebSocket.
+- **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10).

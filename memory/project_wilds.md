@@ -132,7 +132,10 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 - **No authentication of TCS commands:** they can come from anywhere on the local network, from any actor. The TO can lock out external commands at the TCS, or allow them.
 - Observing machines use a **shared role-based observer login**; remote observers VNC into them and agree with the TO over Zoom before commanding. "Good actor" model.
 - **EXPRES** runs a locally hosted web GUI — Tim's suggested model for WILDS (hosted at LDT, VPN only); how observers/spectators get access is up to us. RIMAS uses a LabVIEW GUI on a local Windows machine.
-- **WILDS decision (2026-11-04):** no user accounts; one control lease granted by the TO with a pairing code — see `plans/control-and-gui.md` §3.11.
+- **TCS `accessMode`** (Operator | Engineer) is the TCS GUI's own login mode (TCS manual §4.12), not an external-command lockout. **External Command Preview** is reported as `externalTargetCfgCmdPreviewIsTrue` in `TCSTcsStatusSV` (on by default; with it on, an external science target only fills the TCS preview until the TO accepts; manual §5.4.2.1.7). The lockout field is still unknown.
+- **GUI look (user, 2026-11-05):** copy the MAST GUI's style and components (`/Users/blumzi/src/MAST/gui`, `static/css/{colors,main,notifications}.css`, `static/js/{notifications,confirm-modal,colors}.js`, `templates/components/`) into wilds-gui, adapted: dark theme by default, no accounts, pinned and bundled libraries, `textContent` instead of HTML, `--ui-*` tokens. Plan §2 "GUI stack and look".
+- **WILDS decision (2026-11-05):** every telescope-state-changing operation (target, rotator, offsets, focus, …) goes through one path: TCS access badge on every page, effect label, greyed out with a reason, server-enforced, progress confirmed from telemetry (`plans/control-and-gui.md` §3.12).
+- **WILDS decision (2026-11-04, refined 2026-11-05):** no user accounts. Two GUIs: `/to` (TO: status, request list, grants control to exactly one session or revokes it) and `/io` (instrument operators: multi-page panels). One control holder, any number of read-only sessions from anywhere (local, VNC, VPN). The TO grants control by matching a short code read out on Zoom; engineering mode takes control with a passphrase, for WILDS mechanisms only, not TCS commands — see `plans/control-and-gui.md` §3.11.
 
 ### Open questions from Tim (unanswered)
 - Will WILDS integrate telescope slewing into its own software, or rely on LDT facility tools? Both models are used at LDT (2026-04-30). The rotator/slit angle is only settable via the target command, which argues for WILDS slewing itself. (Our plan answers: WILDS slews itself.)
@@ -255,3 +258,4 @@ Django + Channels owning the process and calling the hardware singletons directl
 ## Instrument Computer
 Recommended: Supermicro SYS-E300-13AD (mini-1U, Intel 13th Gen, up to 64 GB DDR4, IPMI).
 Fanless option: SYS-E302-12D-8C (Xeon D, 8 cores, passive cooling — preferred for observatory).
+**Not bought yet (2026-11-05).** Until a SuperMicro is bought and Ubuntu installed on it, preliminary development runs on the user's Mac (macOS) — see [[project_dev_environment]].
