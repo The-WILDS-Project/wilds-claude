@@ -39,6 +39,56 @@ The Python client is generated from FastAPI's OpenAPI schema. It replaces the ha
 `client/api.py`, whose `/acquire/cancel` and `/solve` paths have no router behind them.
 The skeleton's `/telemetry` router becomes `/status`.
 
+### GUI stack and look (wilds-gui)
+
+The look and the component kit are **copied from the MAST GUI** (`The-MAST-project/MAST_gui`,
+mostly the same author), noting where each piece came from, and adapted. There is no shared
+package for now; one could follow if both GUIs keep changing the same parts.
+
+**Stack:**
+- Django;
+- Bootstrap 5.3 and Bootstrap Icons;
+- HTMX for page fragments and forms;
+- Alpine.js for live components.
+
+Every library is pinned to an exact version and served from Django's static files, never a
+CDN, so the GUI still loads over a slow VPN or from LDT without internet.
+
+**Taken from MAST:**
+- **Colour tokens:** the subdued info/success/warning/danger/primary/secondary palette, as
+  CSS variables, renamed `--mast-*` → `--ui-*`, and the severity classes for borders and text.
+- **Status dots** (ok / warning / error, with warning and error pulsing) and the pulsing
+  **activity heart**, whose tooltip lists what's running. Used for the TCS access badge, the
+  wilds-control link and running jobs.
+- **Toasts** for notices, the **confirm modal** (e.g. "Slew now" with Preview off), the
+  `x-tooltip` Alpine directive (for why a control is greyed out), and the link-status
+  dropdown.
+- **Layout:**
+  - an 80 px header with the Weizmann and WILDS logos;
+  - a collapsible sidebar and the main area for the multi-page `/io`;
+  - a single page with no sidebar for `/to`.
+- **Form and modal conventions:** horizontal `col-4` label, `col-8` field; Cancel on the
+  left, then the primary action.
+
+**Changed for WILDS:**
+- **Dark theme.** WILDS is used at night in a dark control room.
+  - Every colour is a variable with light and dark values.
+  - Bootstrap's `data-bs-theme` switches between them; dark is the default, and the choice
+    is remembered per browser.
+  - A dim red night mode may follow.
+- **No accounts:** sign-in, sign-up, the user menu, allauth and the site selector are
+  dropped. JS9 loads on the product-browsing pages, not per user.
+- **Live data** comes from wilds-control's SSE and WebSocket streams into Alpine
+  components, not from HTMX polling.
+- **Safe text:** session names are typed by anonymous visitors and shown on `/to`, so toasts,
+  tooltips and the confirm modal insert text with `textContent`, never as raw HTML. MAST's
+  versions insert HTML.
+- **The confirm dialog** is its own function returning a promise (`uiConfirm()`), rather
+  than replacing `window.confirm`, with Cancel left and OK right per the convention above.
+- **Clean-ups:** no global `* { margin: 0; padding: 0 }` reset (it works against
+  Bootstrap's spacing), fewer `!important` rules, and none of the stray editor `filepath`
+  comments.
+
 ## 3. Features
 
 Message directions: **→ LDT** = WILDS publishes; **← LDT** = WILDS subscribes. Topic
@@ -528,6 +578,9 @@ Still open:
   operation shows the TCS access badge and its effect ("Send to TO preview" or "Applies
   immediately"), is greyed out with a reason when unavailable, and is confirmed from
   telemetry rather than from sending (§3.12).
+- **GUI look copied from MAST** (2026-11-05): Django, Bootstrap 5.3, HTMX, Alpine.js; MAST's
+  palette and components, plus a dark theme, safe text, pinned and bundled libraries, and no
+  accounts (§2, "GUI stack and look").
 - **Target and rotator path** (2026-11-04, from Tim): `TCSTcsCommandSV`, re-sending the
   current target with the changed fields (§3.2, §3.5).
 - **Code structure** (2026-11-05): abstract base plus implementations per component (e.g.
