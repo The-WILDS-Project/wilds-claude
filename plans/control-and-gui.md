@@ -31,7 +31,7 @@ rotator and on users. Nothing here is implemented yet.*
 | Short command | `POST`/`PUT` returns `200` with the resulting state |
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
 | Jobs | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel`. States: queued → running → done, failed or cancelled |
-| Control | `POST /control/requests` (request, returns a pairing code), `DELETE /control` (release); TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
+| Control | `POST /sessions`, `POST /control/requests` (request control), `DELETE /control` (release), `POST /control/engineering`; TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
 | Configuration | `GET /config`, `GET`/`PUT /config/{component}`, `GET /config/{component}/schema`, `GET /config/{component}/history` (see §3.10) |
 | Video | `WS /guide-camera/stream`: binary JPEG frames, each preceded by a JSON metadata frame |
 
@@ -304,55 +304,111 @@ access is up to us. Operations rely on a "good actor" model.
 
 **WILDS keeps no user accounts.**
 
-- **Viewers:** anyone who can reach the GUI. It is hosted at LDT and reachable only over
-  the VPN.
-- **Identity:** an anonymous Django session (cookie) per browser, plus a name the person
-  types (e.g. "Arie (Rehovot)"), kept in the browser. It's a label for screens and the log,
-  not authentication.
-- **The control lease:** one browser session at a time holds it. wilds-control issues and
-  checks the lease token on every command and configuration change, so scripts or a second
-  GUI can't bypass it. Django shows the prompts and keeps the presence heartbeat.
+**Two GUIs**, served by Django under one host, so there's one origin and no CORS:
 
-**Granting control (pairing code):**
+- **`/to`, the Telescope Operator's page.** It shows instrument status and current
+  activities (information only) and the control panel:
+  - the current holder;
+  - the sessions requesting control, with name, short code and time of request;
+  - a count of read-only viewers, expandable into the full list.
 
-1. The requester clicks *Request control*; their screen shows a short code (`K7-42`).
-2. On Zoom they tell the TO their name and code.
-3. The TO's page lists pending requests with names and codes; the TO approves the match.
+  The TO grants control to exactly one session, or revokes it so nobody holds it. The page
+  shows "**engineering mode: <name> has control**" prominently and can revoke that too.
+- **`/io`, the Instrument Operator's GUI.** Multi-page, with tabbed panels for
+  calibration, operations, and browsing products and intermediates. Every session shows its
+  short code and its state: viewer, requesting, or in control. It has a *Request control*
+  button, which can be pressed again to re-apply.
 
-The name proves nothing; the code ties the approval to the browser of the person on the
-call. If someone already holds control, the TO's approval preempts them and they are told
-who has it now.
+For HTTP/2 over TLS the host needs a fully qualified name (e.g. `wilds.lowell.edu`); a bare
+`wilds` can't be given a certificate.
 
-**The TO page** is the only credentialed part: a shared role passphrase set in deployment
-configuration (preferred), or an allowlist of TO console hosts. A second passphrase for an
-engineer role can follow; that is configuration, not user management.
+**Sessions:**
+
+- **One per browser.** Tabs in the same browser share it, and its lease.
+- **Any number of read-only sessions, one holder.** Each session can come from anywhere:
+  - a browser on the wilds computer, locally or over VNC;
+  - a computer at Weizmann or elsewhere, over the VPN.
+
+  Where a session comes from gives it no rights, so a local or VNC browser is just another
+  session.
+- **Identity:** an anonymous Django session (cookie) plus a name the person types (e.g.
+  "Arie (Rehovot)"), kept in the browser. wilds-control gives each session a UUID
+  internally and a short code for people (`K7-42`). The name is a label for screens and the
+  log, not authentication.
+- **Dead sessions** drop off after a missed-heartbeat timeout. If a dead session held
+  control, the lease lapses and the TO page says so, so a closed laptop can't lock everyone
+  out.
+- **Read-only** means seeing everything (status, video, product and intermediate browsers)
+  while anything that changes state gets `403`.
+- **Viewer cap:** a configurable maximum number of sessions (e.g. 20), with a clear message
+  when it's reached, to protect the wilds computer.
+
+**The control lease:** one session at a time holds it. wilds-control issues and checks the
+lease token on every command and configuration change, so scripts or a second GUI can't
+bypass it.
+
+**Granting control (regular mode):**
+
+1. The instrument operator clicks *Request control*. The request appears on `/to`;
+   clicking again re-applies and moves it to the top.
+2. On Zoom they tell the TO their name and short code.
+3. The TO grants the matching session.
+
+The name proves nothing; the code ties the grant to the browser of the person on the call.
+Sessions appear in the TO's request list only when they ask. If someone already holds
+control, the grant moves it: the previous holder is told who has it now and drops to
+read-only immediately.
+
+**Engineering mode (superuser):** an `/io` session enters the engineering passphrase (set
+in the deployment configuration) and takes control without the TO's approval, e.g. for
+daytime commissioning. Because sessions can come from anywhere, the passphrase is the only
+gate. Engineering mode covers WILDS mechanisms only: stages, lamps, cameras and calibration
+settings. Commands to the TCS (targets, offsets, rotator, focus) still need a TO grant,
+since only the TO sees what the telescope is doing.
+
+**The TO page** is protected by its own shared passphrase, also in deployment configuration.
+Both passphrases are configuration, not user management.
 
 **Rules:**
 
 - **Automatic refusal or deferral:** while an exposure or acquisition runs, a new request
   shows why ("exposure in progress, 4 min left") and can be queued until the job ends. The
   TO can still override.
-- **Running jobs at handover** continue under the new holder rather than being aborted;
-  the new holder may cancel them.
-- **Lost holder:** if the holder's browser stops sending heartbeats, the lease lapses after
-  a timeout, so a closed laptop can't lock everyone out.
-- **Same browser, second tab:** shares the lease; no prompt.
-- **Engineering mode** (a TO-page switch, for daytime commissioning without a TO): anyone
-  may take control; changes to calibration settings are allowed.
-- **Audit:** every request, grant, refusal, preemption and lapse is logged with the typed
-  name, time and reason.
+- **Running jobs at handover** continue under the new holder rather than being aborted; the
+  new holder may cancel them.
+- **Audit:** every request, grant, refusal, handover, revoke, engineering-mode entry and
+  lapse is logged with the typed name, short code, time and reason.
 
-**Shown on every page:** "WILDS control: held by X" and, if the TCS reports it, whether
-the TCS is accepting external commands. The first time someone takes control each night,
-the GUI reminds them to confirm with the TO before commanding the telescope.
+**Many viewers, little load:**
+
+- **Video:** each guide-camera frame is encoded to JPEG once and the same frame goes to
+  every viewer. Each WebSocket gets only the newest frame and stale ones are dropped, so a
+  slow VPN viewer gets a lower frame rate, not a growing delay, and never slows the holder.
+- **Viewer settings:** a viewer can choose a lower frame rate or JPEG quality. This is per
+  session and never changes the camera.
+- **Status:** one status model is built each second and sent to all sessions.
+
+**Shown on every page:** "WILDS control: held by X" (or "engineering mode: X") and, if the
+TCS reports it, whether the TCS is accepting external commands. The first time someone takes
+control each night, the GUI reminds them to confirm with the TO before commanding the
+telescope.
 
 **LDT messages:** none for the lease itself. ← `TCSTcsStatusSV` for the TCS's
 external-command lockout, if it's there (field to be identified).
 
-**Endpoints:** `POST /control/requests` `{name}` → `{request_id, code}`;
-`GET /control/requests` (TO); `POST /control/requests/{id}/approve` and `/refuse`
-`{reason}` (TO); `DELETE /control` (release); `PUT /control/mode` `{engineering}` (TO);
-`POST /control/heartbeat`. TO endpoints need the TO passphrase.
+**Endpoints:**
+
+- Sessions:
+  - `POST /sessions` `{name}` → `{session_id, code}`
+  - `POST /sessions/{id}/heartbeat`
+- Requests and release:
+  - `POST /control/requests` (request or re-apply)
+  - `DELETE /control` (the holder releases)
+  - `POST /control/engineering` `{passphrase}` (take control in engineering mode)
+- TO only (needs the TO passphrase):
+  - `GET /control/sessions` (holder, requests and viewers)
+  - `POST /control/requests/{id}/grant` and `/refuse` `{reason}`
+  - `POST /control/revoke`
 
 ## 4. Order of work
 
@@ -391,13 +447,12 @@ Still open:
 5. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
    entry, and a Locutus FITS dictionary for WILDS.
 6. What does `rotI` mean in an instrument definition?
-7. Will a TO-page passphrase and the pairing-code flow (§3.11) suit the TOs?
+7. Will a TO-page passphrase and the short-code flow (§3.11) suit the TOs?
 
 ## 6. Open decisions (ours)
 
-- **Lease details:** heartbeat interval and lapse timeout; whether engineering mode needs
-  the TO passphrase to switch on (yes, as drafted) and whether it switches off by itself at
-  sunset.
+- **Lease details:** heartbeat interval and dead-session timeout; the viewer cap; whether
+  engineering mode ends by itself (e.g. at sunset, or when the TO grants control).
 
 ## 7. Decided
 
@@ -405,8 +460,12 @@ Still open:
   observing log. The browser talks to wilds-control (:8001) directly over REST, SSE and
   WebSocket for commands, status, configuration and video. Django keeps no hardware state.
 - **No user accounts** (2026-11-04). Anonymous browser sessions with a typed name; one
-  control lease, granted by the TO with a pairing code; a shared passphrase for the TO
+  control lease, granted by the TO with a short code; a shared passphrase for the TO
   page. wilds-control enforces the lease (§3.11).
+- **Two GUIs, one holder, many viewers** (2026-11-05): `/to` for the TO, `/io` for
+  instrument operators; any number of read-only sessions from anywhere (local, VNC, VPN);
+  engineering mode takes control with a passphrase, for WILDS mechanisms only, never TCS
+  commands (§3.11).
 - **Target and rotator path** (2026-11-04, from Tim): `TCSTcsCommandSV`, re-sending the
   current target with the changed fields (§3.2, §3.5).
 - **Code structure** (2026-11-05): abstract base plus implementations per component (e.g.

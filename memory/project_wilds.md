@@ -132,7 +132,7 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 - **No authentication of TCS commands:** they can come from anywhere on the local network, from any actor. The TO can lock out external commands at the TCS, or allow them.
 - Observing machines use a **shared role-based observer login**; remote observers VNC into them and agree with the TO over Zoom before commanding. "Good actor" model.
 - **EXPRES** runs a locally hosted web GUI — Tim's suggested model for WILDS (hosted at LDT, VPN only); how observers/spectators get access is up to us. RIMAS uses a LabVIEW GUI on a local Windows machine.
-- **WILDS decision (2026-11-04):** no user accounts; one control lease granted by the TO with a pairing code — see `plans/control-and-gui.md` §3.11.
+- **WILDS decision (2026-11-04, refined 2026-11-05):** no user accounts. Two GUIs: `/to` (TO: status, request list, grants control to exactly one session or revokes it) and `/io` (instrument operators: multi-page panels). One control holder, any number of read-only sessions from anywhere (local, VNC, VPN). The TO grants control by matching a short code read out on Zoom; engineering mode takes control with a passphrase, for WILDS mechanisms only, not TCS commands — see `plans/control-and-gui.md` §3.11.
 
 ### Open questions from Tim (unanswered)
 - Will WILDS integrate telescope slewing into its own software, or rely on LDT facility tools? Both models are used at LDT (2026-04-30). The rotator/slit angle is only settable via the target command, which argues for WILDS slewing itself. (Our plan answers: WILDS slews itself.)
