@@ -228,7 +228,7 @@ FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon
 `wilds-gui`, probably Django — **details still to be discussed with the user**.
 Current design (`wilds-control/docs/architecture.md`): Django (:8000) serves the page; control
 (POST /acquire /slit /lamps /adc /focus /solve), telemetry (SSE) and guide-camera video (WS, JPEG
-frames) go to `wilds-control` (FastAPI/Hypercorn :8001). This supersedes an earlier idea of
+frames) go to `wilds-control` (FastAPI/Uvicorn :8001). This supersedes an earlier idea of
 Django + Channels owning the process and calling the hardware singletons directly.
 
 **GUI features (TO-facing):**
