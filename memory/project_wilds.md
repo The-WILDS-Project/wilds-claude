@@ -255,3 +255,4 @@ Django + Channels owning the process and calling the hardware singletons directl
 ## Instrument Computer
 Recommended: Supermicro SYS-E300-13AD (mini-1U, Intel 13th Gen, up to 64 GB DDR4, IPMI).
 Fanless option: SYS-E302-12D-8C (Xeon D, 8 cores, passive cooling — preferred for observatory).
+**Not bought yet (2026-11-05).** Until a SuperMicro is bought and Ubuntu installed on it, preliminary development runs on the user's Mac (macOS) — see [[project_dev_environment]].
