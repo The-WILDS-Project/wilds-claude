@@ -22,7 +22,7 @@ rotator and on users. Nothing here is implemented yet.*
 - **Parfocal cameras**: the guide camera and the science cameras are parfocal by design, so
   focusing on the guide camera focuses the science cameras.
 
-## 2. API conventions (wilds-control, FastAPI on :8001)
+## 2. API conventions (wilds-control, FastAPI on Hypercorn, :8001)
 
 | Kind | Form |
 |---|---|
@@ -250,8 +250,12 @@ One Django panel per component, for viewing and changing the settings that wilds
 applies to hardware and procedures.
 
 **Who owns the configuration:** wilds-control. Each component's settings are a Pydantic
-model in the backend. wilds-control validates them, stores them (a versioned file per
-component), and applies them to the device. The Django panels render their forms from
+model in the backend. wilds-control validates them, stores them in its single TOML
+configuration file, and applies them to the device. A `Config` singleton re-reads the file
+when it changes (an invalid file is rejected whole and the running config kept), saves
+atomically, refuses a GUI save with `409` if the file changed on disk since it was loaded,
+and keeps a timestamped copy on every save; history and revert work on those copies, per
+component section. The Django panels render their forms from
 `GET /config/{component}/schema`, the model's JSON Schema, so fields, units, limits and
 help text are defined once, in the backend. Django's own database holds only the
 observing log; there are no user accounts (§3.11).
@@ -405,3 +409,12 @@ Still open:
   page. wilds-control enforces the lease (§3.11).
 - **Target and rotator path** (2026-11-04, from Tim): `TCSTcsCommandSV`, re-sending the
   current target with the changed fields (§3.2, §3.5).
+- **Code structure** (2026-11-05): abstract base plus implementations per component (e.g.
+  `GuideCameraBase` → `ASICamera`, `SimulatedASICamera`), chosen by a deployment setting;
+  `stage/{controller,stage}.py`; singletons created at startup and injected with
+  `Depends`; pydantic `BaseModel` for all relevant classes. Details in
+  `memory/project_control_conventions.md`.
+- **Server: Hypercorn** (2026-11-05), for HTTP/2; one worker. `main()` in `control/app.py`
+  parses argv and runs it. Browsers need TLS for HTTP/2, so the instrument computer needs a
+  real certificate; without one, telemetry moves to the per-tab WebSocket.
+- **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10).
