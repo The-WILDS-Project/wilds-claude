@@ -620,7 +620,7 @@ failed jobs:
   request asks for it (§3.11, requests while busy).
 - **Activities follow the job.** It starts its activities as it needs them and *always* ends
   them (done, failed or cancelled), so a component never stays marked busy by a dead job.
-- **Cancel:** cooperative. It sets `cancel_requested`, raises `Aborting` on the job's
+- **Cancel:** cooperative. It sets `cancel_requested`, raises `Cancelling` on the job's
   components, and the job becomes `cancelled` once they have stopped. Cancel needs the lease
   token, so it is the *current holder* who may cancel, not the session that started it.
 - **Handover (§3.11):** a running job keeps running under the new holder. A job still
