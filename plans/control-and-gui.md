@@ -26,7 +26,7 @@ rotator and on users. Nothing here is implemented yet.*
 
 | Kind | Form |
 |---|---|
-| Snapshot | `GET /status`: one model with telescope, instrument, cameras, jobs and the control lease |
+| Snapshot | `GET /status`: one model with telescope, instrument, cameras, jobs, activities (§3.13) and the control lease |
 | Live updates | `GET /status/stream` (SSE): `status` every 1 s, plus `job` and `log` events when they happen |
 | Short command | `POST`/`PUT` returns `200` with the resulting state |
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
@@ -533,6 +533,49 @@ timeout. Each kind of operation has its own confirmation:
 Every operation is logged with the session's name and code, the effect label shown, and the
 outcome.
 
+### 3.13 Activities
+
+What each component is doing *right now*, adopted from MAST's `common/activities.py` with the
+parts that hurt there left out. Jobs (§2) are requests with a life cycle; activities are
+component state. A job raises one or more activities, and an activity can exist without a job
+(a mount that is tracking).
+
+- **Where:** `wilds.control.activities`, in wilds-control. Control owns all hardware and every
+  procedure (§1), so it is the only place activities start and end. wilds-bridge, -solving and
+  -science-camera know nothing of them: control raises `Slewing` around its call into bridge.
+  wilds-gui sees activities only as JSON. The module imports no FastAPI, so it can move into
+  wilds-bridge, the way science-camera already depends on it, if a second repo ever needs to
+  start activities itself. A separate common repo only when three repos share types.
+- **Each component defines its own activity enum** next to its code and registers it:
+  `activities = registry.register("mount", MountActivity)`. No central table of components.
+- **Names on the wire, never a bitmask.** MAST numbers its flags with `auto()` and sends the
+  bitmask, which forced an append-only rule and a cross-repo check before removing a member.
+  Here the state is the set of running members, kept in start order, and `/status` carries
+  their names, so adding, reordering or removing a member cannot change what a consumer reads.
+- **Calls:** `start(activity, details=, existing_ok=)`, `end(activity)`, `is_active`,
+  `is_idle`, `names`, and `wait_clear(activity, timeout=)` (sync) / `await_clear` (async).
+  A wait that times out returns `False` and **leaves the activity set**, so the component still
+  reports it and the caller reports the failure instead of hiding it.
+- **Timing:** the duration is measured on the monotonic clock, so an NTP step cannot skew it
+  or make it negative. The wall-clock start is reported as `since_ms`.
+- **Everything under one lock**, including the timings and details (MAST mutates those outside
+  it).
+- **A listener can never fail the operation it announces.** `on_change` listeners get an
+  `ActivityEvent` (start or end, with details and duration). They must not block; an exception
+  in one is logged and swallowed. The `/status` stream needs no listener: it reads the registry
+  each second, and listeners are for toasts and logs later.
+- **Conventions kept from MAST:**
+  - an `Aborting` member on every component that can move, so abort is a visible, waitable
+    state;
+  - umbrella members (`Calibrating`, `ExecutingPlan`) for work spanning components, tied to
+    the job that raised them;
+  - **no member before something sets it.** A member nobody starts reads like a completion
+    signal, and a waiter on it never returns. So the registry ships with no components: each
+    arrives with the code that sets its activities.
+- **`/status`:** `activities: {component: [{name, since_ms, details}]}`, listing only
+  components with something running. The activity heart (§2, GUI look) and the `/to` page's
+  "current activities" read it. Running jobs at handover (§3.11) show up here per component.
+
 ## 4. Order of work
 
 | # | Step | Testable with | Blocked by |
@@ -540,6 +583,7 @@ outcome.
 | 1 | Status model and stream; GUI status panel. `TelescopeStatus` falls back to `TCSTcsStatusSV`. | TCS simulator, now | none |
 | 2 | Guide-camera simulator and live view with overlays | image simulator | none |
 | 3 | Jobs framework and the control lease, with the TO page | unit tests | none |
+| 3b | Activities registry and `/status` field (§3.13); components add theirs as they arrive | unit tests | none |
 | 3a | Configuration framework (models, storage, history, schema endpoints) and the generic Django form renderer; first panels for the guide camera and stage presets | simulators | none |
 | 4 | Slit width, lamps and ADC panels | MCS2 SCPI simulator (6 channels) | 6-channel MCS2 part number; lamp stage models; lamp power switching (TBD) |
 | 5 | Target submission and slit rotation (`TCSTcsCommandSV`; fix `slew_to`'s topic) | TCS simulator | a session on nysa with Georgi, in case the MCB faults |
