@@ -12,3 +12,4 @@
 - [Pull Requests](feedback_pull_requests.md) — WILDS changes go on a feature branch + GitHub PR, never direct to main/master
 - [Weizmann SMB shares](reference_smb_shares.md) — mast-ns-control/mast-share and last0/catalogs; user `mast`, password in WILDS/.wilds-vault/smb-shares.txt
 - Simulator test log: `../sim-tests.md` — dated sessions against the LDT TCS simulator, setup reference, open LIG questions
+- [Say what needs restarting](feedback_restart_notes.md) — after changes, say which servers (control, GUI) or browser pages need restarting
