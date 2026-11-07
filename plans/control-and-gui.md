@@ -434,7 +434,7 @@ that control requests wait for the TO. This replaces the IO page polling the TO 
 **The TO page** is protected by its own shared passphrase, also in the configuration file
 (`/etc/wilds/passphrases.toml`, `[passphrases]`, a file of its own so it can have its own
 owner and mode; in development `WILDS/.vault/passphrases.toml`; engineering defaults to
-`physics` with a warning on `/eng` until changed, TO has no default and stays closed until
+`physics`, which is accepted as it is (no warning), TO has no default and stays closed until
 set). Both passphrases are configuration, not user management.
 
 **Rules:**
@@ -714,7 +714,7 @@ Still open:
   `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
   in `/etc/wilds/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
   on 2026-11-07); the default engineering
-  passphrase `physics` shows a warning, with no rate limiting for now. The TO is online while
+  passphrase `physics` is accepted without a warning, with no rate limiting for now. The TO is online while
   a TO page is open and unlocked. Aliases: `/telescope-operator`, `/telop` → `/to`;
   `/instrument-operator`, `/instop` → `/io`; `/engineering` → `/eng`. `/eng` stays on :8000;
   a reverse proxy on :80 for `http://wilds/...` is not decided.
