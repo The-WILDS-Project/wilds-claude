@@ -4,7 +4,7 @@ description: Decided structure for wilds-control code — ABC bases + implementa
 type: project
 ---
 
-Decided by the user, 2026-11-05. Code lives under `wilds-control/src/wilds/control/`.
+Decided by the user, 2026-11-05. Code lives under `control/src/wilds/control/`.
 
 - **Base classes and implementations.** Each component that can be simulated, or has several versions, has an abstract base and concrete classes, e.g. `guide_camera/base.py` → `GuideCameraBase(BaseModel, ABC)` (settings, `video_frame` = latest frame, `single_frame()`, …), with `guide_camera/asi.py` → `ASICamera` and `guide_camera/simulated.py` → `SimulatedASICamera`.
   - The base holds the shared logic (settings validation, latest frame and fan-out, frame numbering); subclasses implement only the hardware hooks. Then the simulator exercises the shared code too.

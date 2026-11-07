@@ -1,6 +1,6 @@
 ---
 name: Weizmann SMB shares
-description: How to reach //mast-ns-control/mast-share and //last0/catalogs from the Mac; credentials in WILDS/.wilds-vault/smb-shares.txt
+description: How to reach //mast-ns-control/mast-share and //last0/catalogs from the Mac; credentials in WILDS/.vault/smb-shares.txt
 type: reference
 ---
 
@@ -11,7 +11,7 @@ Two Samba (Ubuntu) servers on the Weizmann network (`*.weizmann.ac.il`), SMB on 
 | `//mast-ns-control/mast-share` | `2025-04-16 pointing models`, `Downloads`, `MAST`, `solve-test`, `test` |
 | `//last0/catalogs` | astrophysics catalogs: `GAIA`, `GLADE`, `MergedCat`, `PGC`, `QSO`, `data` |
 
-- **Login:** user `mast`; the password is in `/Users/blumzi/src/WILDS/.wilds-vault/smb-shares.txt` (`password: …` line; parse with `split(":", 1)[1].strip()`). Never print it, and never put it in this repo, which is public.
+- **Login:** user `mast`; the password is in `/Users/blumzi/src/WILDS/.vault/smb-shares.txt` (`password: …` line; parse with `split(":", 1)[1].strip()`). Never print it, and never put it in this repo, which is public.
 - **Guest:** can list the shares (`smbutil view -N //guest@<host>`) but not open them. Samba reports that as "No such file or directory".
 - **Mount read-only** under the session scratchpad, then unmount when done:
   ```sh
