@@ -65,7 +65,8 @@ CDN, so the GUI still loads over a slow VPN or from LDT without internet.
   dropdown.
 - **Layout:**
   - an 80 px header with the Weizmann and WILDS logos;
-  - a collapsible sidebar and the main area for the multi-page `/io`;
+  - a collapsible sidebar and the main area for the multi-page `/io` (Operations, Products) and
+    `/eng` (Monitoring, Calibration, Configuration);
   - a single page with no sidebar for `/to`.
 - **Form and modal conventions:** horizontal `col-4` label, `col-8` field; Cancel on the
   left, then the primary action.
@@ -409,15 +410,31 @@ Sessions appear in the TO's request list only when they ask. If someone already 
 control, the grant moves it: the previous holder is told who has it now and drops to
 read-only immediately.
 
-**Engineering mode (superuser):** an `/io` session enters the engineering passphrase (set
-in the deployment configuration) and takes control without the TO's approval, e.g. for
-daytime commissioning. Because sessions can come from anywhere, the passphrase is the only
-gate. Engineering mode covers WILDS mechanisms only: stages, lamps, cameras and calibration
-settings. Commands to the TCS (targets, offsets, rotator, focus) still need a TO grant,
-since only the TO sees what the telescope is doing.
+**Engineering mode (superuser):** a separate page, `/eng` (on :8000, with the aliases
+`/engineering`), titled "WILDS - Engineering". The engineering passphrase unlocks it and takes
+control without the TO's approval, e.g. for daytime commissioning. It is checked by
+wilds-control; the page stays unlocked while the session holds the lease, so a reload does not
+ask again. Engineering mode covers WILDS mechanisms only: stages, lamps, cameras and
+calibration settings (`require_engineering`: lease token *and* engineering mode). Commands to
+the TCS (targets, offsets, rotator, focus) still need a TO grant, since only the TO sees what
+the telescope is doing. Taking control this way is **not coordinated by the software**: it
+takes the lease at once and the previous holder drops to read-only (running jobs continue);
+people coordinate by Zoom or in person. The TO can still revoke. The page has monitoring
+(components, link, holder) and the calibration access points (lamps, slit, ADC, focus, bias,
+dark, flat), greyed out until wilds-control implements them. Page titles: "WILDS - Instrument
+Operator" for `/io`, "WILDS - Telescope Operator" for `/to`.
 
-**The TO page** is protected by its own shared passphrase, also in deployment configuration.
-Both passphrases are configuration, not user management.
+**TO presence:** the TO counts as online while a TO page is open and unlocked (it polls
+wilds-control with the passphrase). wilds-control reports `to.online` in the status stream,
+offline after `presence.to_timeout_s` (75 s, since browsers throttle background tabs) without
+contact, and logs the transitions. The IO pages show "TO: online/offline" and, when offline,
+that control requests wait for the TO. This replaces the IO page polling the TO page every
+15 s: sessions already heartbeat to wilds-control, which tells everyone.
+
+**The TO page** is protected by its own shared passphrase, also in the configuration file
+(`/etc/wilds/config.toml`, `[passphrases]`; engineering defaults to `physics` with a warning on
+`/eng` until changed, TO has no default and stays closed until set). Both passphrases are
+configuration, not user management.
 
 **Rules:**
 
@@ -592,3 +609,12 @@ Still open:
   is not needed); one worker. `main()` in `control/app.py` parses argv and runs it. Plain
   HTTP/1.1, so keep the number of long-lived streams per tab low (6 connections per origin).
 - **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10).
+- **Engineering page and TO presence** (2026-11-07): `/eng` replaces the engineering page in
+  `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
+  in `/etc/wilds/config.toml` (re-read when the file changes); the default engineering
+  passphrase `physics` shows a warning, with no rate limiting for now. The TO is online while
+  a TO page is open and unlocked. Aliases: `/telescope-operator`, `/telop` → `/to`;
+  `/instrument-operator`, `/instop` → `/io`; `/engineering` → `/eng`. `/eng` stays on :8000;
+  a reverse proxy on :80 for `http://wilds/...` is not decided.
+- **Calibration and Configuration live on `/eng`** (2026-11-07), not `/io`: `/io` keeps Operations
+  and Products; `/io/calibration/` and `/io/configuration/` redirect to the `/eng` pages.
