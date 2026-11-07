@@ -20,10 +20,12 @@ must run on macOS as well as Linux:
 editable, so cross-repo imports resolve.
 
 **How to apply:**
-- The tree is set up by the **`wilds-workspace`** repo (github.com/The-WILDS-Project/wilds-workspace, created 2026-10-30): `WILDS.code-workspace` (folder paths `../wilds-*`) plus `setup.sh`, which clones missing repos beside it and builds/refreshes the venv with the install command below. Change editor settings or the install list there, not in a loose file in `WILDS/`.
+- The tree is set up by the **`workspace`** repo (GitHub: The-WILDS-Project/wilds-workspace, created 2026-10-30; local folders carry no `wilds-` prefix since 2026-11-07, so `WILDS/{workspace,control,gui,bridge,solving,science-camera,claude}`): `WILDS.code-workspace` (folder paths `../control` etc.) plus `setup.sh`, which clones missing repos beside it and builds/refreshes the venv with the install command below. Change editor settings or the install list there, not in a loose file in `WILDS/`.
 - Install/reinstall with `uv pip install --no-sources --python .venv/bin/python -e ./bridge
   -e ./solving -e ./control -e ./gui -e ./science-camera sdss-archon pytest pytest-asyncio ruff`.
   `--no-sources` is needed because `science-camera` points `sdss-archon` at `../archon`,
   which isn't checked out; archon comes from PyPI instead.
+- Secrets live in `WILDS/.vault/` (outside every repo, never committed). Dev passphrases: `.vault/passphrases.toml` (`to`, `engineering`), read by wilds-control via `WILDS_CONTROL_PASSPHRASES` in the VS Code launch entry; deployed machines use `/etc/wilds/passphrases.toml`.
+- Don't use `uv run` in a repo: it builds a project `.venv` and rewrites `uv.lock`. Use the shared venv. After renaming folders, reinstall the editable packages or `import wilds` fails.
 - `wilds` is a PEP 420 namespace package: no repo may add `src/wilds/__init__.py`, or it shadows
   the others (removed from bridge and solving on 2026-10-12).
