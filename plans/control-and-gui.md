@@ -263,7 +263,7 @@ Locutus runs on the facility broker `joe`; it isn't on tanagra. Files follow
 ID and abbreviation are to be agreed with LIG.
 
 **Endpoints:** `POST /exposures` `{type: bias|dark|flat|arc|object, vis_s, uv_s, count,
-object}` → job; `POST /jobs/{id}/cancel` (abort); `GET /exposures` (recent files).
+object}` → job; `POST /jobs/{id}/cancel`; `GET /exposures` (recent files).
 
 ### 3.8 Guide camera live view
 
@@ -441,7 +441,7 @@ configuration, not user management.
 - **Automatic refusal or deferral:** while an exposure or acquisition runs, a new request
   shows why ("exposure in progress, 4 min left") and can be queued until the job ends. The
   TO can still override.
-- **Running jobs at handover** continue under the new holder rather than being aborted; the
+- **Running jobs at handover** continue under the new holder rather than being cancelled; the
   new holder may cancel them.
 - **Audit:** every request, grant, refusal, handover, revoke, engineering-mode entry and
   lapse is logged with the typed name, short code, time and reason.
@@ -565,7 +565,7 @@ component state. A job raises one or more activities, and an activity can exist 
   in one is logged and swallowed. The `/status` stream needs no listener: it reads the registry
   each second, and listeners are for toasts and logs later.
 - **Conventions kept from MAST:**
-  - an `Aborting` member on every component that can move, so abort is a visible, waitable
+  - a `Cancelling` member on every component that can move, so cancel is a visible, waitable
     state;
   - umbrella members (`Calibrating`, `ExecutingPlan`) for work spanning components, tied to
     the job that raised them;
