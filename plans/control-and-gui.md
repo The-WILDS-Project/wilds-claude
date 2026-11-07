@@ -573,8 +573,22 @@ component state. A job raises one or more activities, and an activity can exist 
     signal, and a waiter on it never returns. So the registry ships with no components: each
     arrives with the code that sets its activities.
 - **`/status`:** `activities: {component: [{name, since_ms, details}]}`, listing only
-  components with something running. The activity heart (§2, GUI look) and the `/to` page's
-  "current activities" read it. Running jobs at handover (§3.11) show up here per component.
+  components with something running. Running jobs at handover (§3.11) show up here per
+  component.
+- **In the GUI:** the *activity board*. A row of component rectangles; each running activity
+  hangs below its component as a pill with its elapsed time. A job touching two or more
+  components is an umbrella bar across them (kind, who started it, progress, Cancel); a
+  single-component job puts its progress in the pill. An ended pill or bar tints by outcome
+  (done, failed, cancelled), then collapses and the stack closes up. It replaces the old
+  component cards and the activity heart, and is on `/to`, `/io` and `/eng`. A **failed job**
+  also leaves a red card in the *attention band* under the header until dismissed, since its
+  pill is gone; nothing shows there when all is well. Only the session holding control sees an
+  enabled Cancel (`/io`, `/eng`); `/to` is read-only.
+- **`opmode`** (`config.toml`, top level): `development` (the default) or `production`.
+  Reported in `/status`. The `/dev` helpers answer `404` unless it is `development`; the file is
+  re-read when it changes. `POST /dev/jobs/demo` ("testing 1 2 3") is a made-up job across
+  the slit, ADC and guide camera for watching the board, started from a card on `/io` Operations.
+  A deployed `config.toml` says `production`.
 
 ### 3.14 Jobs and errors
 
@@ -678,6 +692,9 @@ Still open:
 
 - **Lease details:** heartbeat interval and dead-session timeout; the viewer cap; whether
   engineering mode ends by itself (e.g. at sunset, or when the TO grants control).
+- **TO cancelling jobs:** for now only the lease holder (including engineering mode) can
+  cancel; the TO page is read-only. Later the TO may be allowed to cancel any job with their
+  passphrase (their Revoke does not stop a running job, which carries on under the next holder).
 
 ## 7. Decided
 
