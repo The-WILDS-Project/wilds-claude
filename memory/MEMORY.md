@@ -7,7 +7,7 @@
 - [Python Style](feedback_python_style.md) — PEP 604 unions: `X | None` not `Optional[X]`, no `Union[]`, no `from __future__ import annotations`
 - [User Signals](feedback_signals.md) — `???` means "your thoughts/suggestions please"
 - [Memory Location](feedback_memory_location.md) — Memory, plans and notes go in this wilds-claude repo, not ~/.claude
-- [Dev Environment](project_dev_environment.md) — wilds-workspace repo (workspace + setup.sh); shared Python 3.14 venv at WILDS/.venv; wilds namespace package; archon from PyPI
+- [Dev Environment](project_dev_environment.md) — workspace repo (workspace + setup.sh, folders unprefixed); shared Python 3.14 venv at WILDS/.venv; wilds namespace package; archon from PyPI
 - [wilds-control Code Conventions](project_control_conventions.md) — ABC bases + simulated/real implementations, singletons, stage/ layout, Uvicorn + main() in app.py, one TOML Config singleton, pydantic models
 - [Pull Requests](feedback_pull_requests.md) — WILDS changes go on a feature branch + GitHub PR, never direct to main/master
 - [Weizmann SMB shares](reference_smb_shares.md) — mast-ns-control/mast-share and last0/catalogs; user `mast`, password in WILDS/.vault/smb-shares.txt
