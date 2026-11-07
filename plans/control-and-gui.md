@@ -576,13 +576,69 @@ component state. A job raises one or more activities, and an activity can exist 
   components with something running. The activity heart (§2, GUI look) and the `/to` page's
   "current activities" read it. Running jobs at handover (§3.11) show up here per component.
 
+### 3.14 Jobs and errors
+
+A *job* is one long procedure that control runs (acquisition, autofocus, slit rotation, an
+exposure series). It lives in the backend, so it survives a closed tab and the same API
+serves the GUI, scripts and automation (§1). Jobs are requests with a life cycle; the
+components' activities (§3.13) are what they raise while they run.
+
+**Errors.** MAST wraps every reply in a `CanonicalResponse` (`value` or `errors`, always HTTP
+200). WILDS does not: HTTP carries the outcome, so the generated client (§2) is typed per
+endpoint and the OpenAPI schema shows the error cases. MAST's `succeeded` is also
+`value is not None`, which reads a successful call returning nothing as a failure. What is
+kept is one error shape that a caller can always parse, used by every error response *and* by
+failed jobs:
+
+`{"code": "busy", "message": "stage is moving (job j-41)", "details": {...}}`
+
+- `code` is machine-readable, so the GUI never parses text. Initial set: `lease_required`
+  (403), `not_found` (404), `busy` (409), `invalid` (422), `refused` (the TCS or a device said
+  no), `timeout`, `cancelled`, `internal`.
+- `message` is for people. `details` is optional and structured (e.g. the blocking `job_id`).
+
+**Model:**
+
+| Field | Meaning |
+|---|---|
+| `id`, `kind` | e.g. `j-41`, `autofocus` |
+| `state` | `queued` → `running` → `done`, `failed` or `cancelled` |
+| `started_by` | session name and short code that created it (provenance, §3.11) |
+| `created_at`, `started_at`, `ended_at` | UTC; durations come from the monotonic clock |
+| `progress` | `{fraction: 0..1 or null, message}` |
+| `activities` | the `{component: [names]}` it has raised, from §3.13 |
+| `result` | on `done`, per kind |
+| `error` | on `failed` or `cancelled`: the error shape above |
+| `cancel_requested` | set by `POST /jobs/{id}/cancel`; not a state of its own |
+
+**Rules:**
+
+- **Start:** `POST` of a procedure needs the lease token (`403 lease_required`), creates the
+  job and returns `202 {job_id}`.
+- **A job declares the components it uses.** Two jobs may not use the same component at once:
+  the second is refused `409 busy` with `details.job_id` of the first, or queued if the
+  request asks for it (§3.11, requests while busy).
+- **Activities follow the job.** It starts its activities as it needs them and *always* ends
+  them (done, failed or cancelled), so a component never stays marked busy by a dead job.
+- **Cancel:** cooperative. It sets `cancel_requested`, raises `Cancelling` on the job's
+  components, and the job becomes `cancelled` once they have stopped. Cancel needs the lease
+  token, so it is the *current holder* who may cancel, not the session that started it.
+- **Handover (§3.11):** a running job keeps running under the new holder. A job still
+  `queued` is dropped and logged as `cancelled` with reason "holder changed", since the new
+  holder never asked for it.
+- **Events:** every state or progress change is a `job` event on `/status/stream`, carrying
+  the whole job. `/status` lists active jobs and the last few finished ones.
+- **Audit:** create, start, end and cancel are logged with the session's name and code.
+- **Retention:** in memory, the last 100 finished jobs. A restart of wilds-control drops
+  them, as it drops sessions and the lease; running jobs do not survive it.
+
 ## 4. Order of work
 
 | # | Step | Testable with | Blocked by |
 |---|---|---|---|
 | 1 | Status model and stream; GUI status panel. `TelescopeStatus` falls back to `TCSTcsStatusSV`. | TCS simulator, now | none |
 | 2 | Guide-camera simulator and live view with overlays | image simulator | none |
-| 3 | Jobs framework and the control lease, with the TO page | unit tests | none |
+| 3 | Jobs framework and error shape (§3.14) and the control lease, with the TO page | unit tests | none |
 | 3b | Activities registry and `/status` field (§3.13); components add theirs as they arrive | unit tests | none |
 | 3a | Configuration framework (models, storage, history, schema endpoints) and the generic Django form renderer; first panels for the guide camera and stage presets | simulators | none |
 | 4 | Slit width, lamps and ADC panels | MCS2 SCPI simulator (6 channels) | 6-channel MCS2 part number; lamp stage models; lamp power switching (TBD) |
