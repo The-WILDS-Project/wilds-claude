@@ -65,7 +65,8 @@ CDN, so the GUI still loads over a slow VPN or from LDT without internet.
   dropdown.
 - **Layout:**
   - an 80 px header with the Weizmann and WILDS logos;
-  - a collapsible sidebar and the main area for the multi-page `/io`;
+  - a collapsible sidebar and the main area for the multi-page `/io` (Operations, Products) and
+    `/eng` (Monitoring, Calibration, Configuration);
   - a single page with no sidebar for `/to`.
 - **Form and modal conventions:** horizontal `col-4` label, `col-8` field; Cancel on the
   left, then the primary action.
@@ -615,3 +616,5 @@ Still open:
   a TO page is open and unlocked. Aliases: `/telescope-operator`, `/telop` → `/to`;
   `/instrument-operator`, `/instop` → `/io`; `/engineering` → `/eng`. `/eng` stays on :8000;
   a reverse proxy on :80 for `http://wilds/...` is not decided.
+- **Calibration and Configuration live on `/eng`** (2026-11-07), not `/io`: `/io` keeps Operations
+  and Products; `/io/calibration/` and `/io/configuration/` redirect to the `/eng` pages.
