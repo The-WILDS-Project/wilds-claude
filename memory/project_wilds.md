@@ -125,7 +125,7 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 - Asynchronous: subscribe to the response topic first; filter responses on both `recipient` and a fresh `request_id` (the response topic is shared)
 - Request close to header finalisation; keep the dictionary name and its `KWDICT` entry in the product
 - Dictionaries are TOML files in Lorax-TNG `lorax/locutus/fits_dicts` (repo is **private**); existing: `deveny_sv`, `ldt_facility`, `ldtboresight_*`. WILDS would need its own (e.g. `wilds_*`) — ask LIG; new source topics must be added to Locutus's `topics_to_monitor` by its owner
-- Spec: `locutus_fits_dictionary_guide.rst` (Tim's email of 2026-09-08); local copy in `wilds-bridge/docs/`, untracked
+- Spec: `locutus_fits_dictionary_guide.rst` (Tim's email of 2026-09-08); local copy in `bridge/docs/`, untracked
 - **Implication:** WILDS may not need to assemble FITS headers from five telemetry topics itself — request `ldt_facility` (+ a WILDS dictionary) at readout
 
 ### Access and roles at LDT (Tim, 2026-11-02)
@@ -226,7 +226,7 @@ FITS headers assembled from tcs/aos/instrumentCube/wrs telemetry topics + Archon
 
 ### GUI Architecture
 `wilds-gui`, probably Django — **details still to be discussed with the user**.
-Current design (`wilds-control/docs/architecture.md`): Django (:8000) serves the page; control
+Current design (`control/docs/architecture.md`): Django (:8000) serves the page; control
 (POST /acquire /slit /lamps /adc /focus /solve), telemetry (SSE) and guide-camera video (WS, JPEG
 frames) go to `wilds-control` (FastAPI/Uvicorn :8001). This supersedes an earlier idea of
 Django + Channels owning the process and calling the hardware singletons directly.

@@ -1,7 +1,7 @@
 # LDT simulator test log
 
 Sessions against the LDT TCS simulator and the Mars Hill test broker. Newest first.
-Credentials are never recorded here — they live in `WILDS/.wilds-vault/`.
+Credentials are never recorded here — they live in `WILDS/.vault/`.
 
 ## Setup reference
 

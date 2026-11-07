@@ -21,9 +21,9 @@ editable, so cross-repo imports resolve.
 
 **How to apply:**
 - The tree is set up by the **`wilds-workspace`** repo (github.com/The-WILDS-Project/wilds-workspace, created 2026-10-30): `WILDS.code-workspace` (folder paths `../wilds-*`) plus `setup.sh`, which clones missing repos beside it and builds/refreshes the venv with the install command below. Change editor settings or the install list there, not in a loose file in `WILDS/`.
-- Install/reinstall with `uv pip install --no-sources --python .venv/bin/python -e ./wilds-bridge
-  -e ./wilds-solving -e ./wilds-control -e ./wilds-gui -e ./wilds-science-camera sdss-archon pytest pytest-asyncio ruff`.
-  `--no-sources` is needed because `wilds-science-camera` points `sdss-archon` at `../archon`,
+- Install/reinstall with `uv pip install --no-sources --python .venv/bin/python -e ./bridge
+  -e ./solving -e ./control -e ./gui -e ./science-camera sdss-archon pytest pytest-asyncio ruff`.
+  `--no-sources` is needed because `science-camera` points `sdss-archon` at `../archon`,
   which isn't checked out; archon comes from PyPI instead.
 - `wilds` is a PEP 420 namespace package: no repo may add `src/wilds/__init__.py`, or it shadows
   the others (removed from bridge and solving on 2026-10-12).
