@@ -323,6 +323,32 @@ writes:
   - If a second machine ever needs the same calibration (the MAST fleet, say), a network
     database becomes worth its cost; access goes through this one module.
 
+**In code (`wilds/control/conf.py`, decided 2026-11-08):** every component has up to two
+*slices*, each a frozen Pydantic model reached through a typed, generic `ConfHandle[M]`:
+`component.conf` (operational: exposure, gain, presets, a cooler setpoint) and `component.cal`
+(calibration: plate scale, slit pixel, focus offset, ADC zero points). They are separate
+sections of the settings store, so calibrations keep their own history and are not buried by
+operational tweaks.
+
+- **Defaults come from the model, current values from the store.** Nothing saved means the
+  defaults; "reset to defaults" saves `Model()` as a new version.
+- **Measured values have no invented default:** calibration fields default to `None`; a
+  procedure that needs one calls `cal.require("plate_scale")`, which refuses with
+  `409 not_calibrated` until someone has measured it.
+- **The handle is the live reference; the model is frozen.** `conf.current.gain` reads one value;
+  `snap = conf.snapshot()` gives several consistent ones (a procedure takes one at its start and
+  never sees a calibration change under it). Anyone holding `component.conf` sees a save.
+- **One write path:** `save`, `patch` (partial update, validated whole) and `revert` validate,
+  record who/when/why, swap the live model, then call the `on_change(old, new, changed)`
+  listeners, in that order. Components subscribe to apply a change to hardware, and apply their
+  stored values once at startup. A procedure never saves; it overrides on its snapshot. Only an
+  operator saves, or accepts a calibration a procedure proposes.
+- **Fields describe themselves** (label, unit, help, limits) for `GET /config/{component}/schema`
+  and the GUI's generic form. A default may depend on `opmode` (`by_opmode`): the guide camera's
+  `cooler_enabled` is `True` in development; production is to be decided (False until then).
+- Deployment settings stay in `config.toml`; `[guide_camera] kind` is one (it picks the class and
+  needs a restart).
+
 The Django panels render their forms from `GET /config/{component}/schema`, the model's
 JSON Schema, so fields, units, limits and help text are defined once, in the backend. Django's
 own database holds only the observing log; there are no user accounts (§3.11).
