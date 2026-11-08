@@ -301,23 +301,39 @@ One Django panel per component, for viewing and changing the settings that wilds
 applies to hardware and procedures.
 
 **Who owns the configuration:** wilds-control. Each component's settings are a Pydantic
-model in the backend. wilds-control validates them, stores them in its single TOML
-configuration file, and applies them to the device. A `Config` singleton re-reads the file
-when it changes (an invalid file is rejected whole and the running config kept), saves
-atomically, refuses a GUI save with `409` if the file changed on disk since it was loaded,
-and keeps a timestamped copy on every save; history and revert work on those copies, per
-component section. The Django panels render their forms from
-`GET /config/{component}/schema`, the model's JSON Schema, so fields, units, limits and
-help text are defined once, in the backend. Django's own database holds only the
-observing log; there are no user accounts (§3.11).
+model in the backend, which validates them and applies them to the device. Two stores, by who
+writes:
+
+- **Deployment settings** are hand-edited in `/etc/wilds/config.toml` (root-owned, read at
+  start; passphrases in their own file, §3.11). wilds-control never writes it.
+- **Operational and calibration settings** are written by the application, from the GUI or
+  from a procedure, so they live in **one SQLite file** (`/var/lib/wilds/settings.db`, the
+  `[store]` section of config.toml; `wilds/control/settings_store.py`). Not MongoDB: MAST uses
+  it for a fleet of units sharing one configuration; one machine needs no server to run,
+  secure, back up and keep running before the instrument can start. SQLite is in the standard
+  library, one file, transactional (a power cut leaves the last whole version).
+  - A *section* is one component's settings model, stored as JSON and versioned as a whole.
+    `put` records who (name and code), when and why; a save that changes nothing records
+    nothing; every version is kept, and `history` lists them with the keys each changed.
+  - `revert` restores an older version *as a new version*, so the history only grows.
+  - `expected_version` is optimistic concurrency: a form loaded at version 4 that finds 5 is
+    refused with `409`, never silently overwritten.
+  - Keys added to a model later take their defaults; a stored section that no longer
+    validates is reported, not guessed at; a database from a newer wilds-control is refused.
+  - If a second machine ever needs the same calibration (the MAST fleet, say), a network
+    database becomes worth its cost; access goes through this one module.
+
+The Django panels render their forms from `GET /config/{component}/schema`, the model's
+JSON Schema, so fields, units, limits and help text are defined once, in the backend. Django's
+own database holds only the observing log; there are no user accounts (§3.11).
 
 **Three kinds of setting**, shown separately in each panel:
 
 | Kind | Examples | Who may change | When it applies |
 |---|---|---|---|
-| Operational | guide-camera exposure, gain; stage presets | the control holder | immediately, or rejected with `409` if the device is busy |
-| Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | the control holder, in engineering mode | on save; every change logged with the holder's name and the time, and revertible |
-| Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | file only, not editable in the GUI | on restart |
+| Operational | guide-camera exposure, gain; stage presets | the control holder | immediately, or rejected with `409` if the device is busy; kept in the settings store |
+| Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | the control holder, in engineering mode | on save; every change recorded in the settings store with the holder's name, the time and the reason, and revertible |
+| Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | `/etc/wilds/config.toml` only, not editable in the GUI | on restart |
 
 **Components and their settings**
 
@@ -771,7 +787,9 @@ Still open:
 - **Server: Uvicorn** (2026-11-05; reverses an earlier Hypercorn choice made for HTTP/2, which
   is not needed); one worker. `main()` in `control/app.py` parses argv and runs it. Plain
   HTTP/1.1, so keep the number of long-lived streams per tab low (6 connections per origin).
-- **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10).
+- **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10). Refined
+  2026-11-08: it holds *deployment* settings only; operational and calibration settings are
+  written by the app into a SQLite settings store, with history and revert (§3.10).
 - **Engineering page and TO presence** (2026-11-07): `/eng` replaces the engineering page in
   `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
   in `/etc/wilds/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
