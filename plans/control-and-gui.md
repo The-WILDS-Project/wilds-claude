@@ -647,6 +647,51 @@ failed jobs:
 - **Retention:** in memory, the last 100 finished jobs. A restart of wilds-control drops
   them, as it drops sessions and the lease; running jobs do not survive it.
 
+### 3.15 Filing: local staging and delivery
+
+Everything the instrument produces is written on the **local staging disk** and delivered from
+there to the facility's data folder on the **share** (`/lois/data/dct`, §3.7). The share may be
+down, slow or not yet mounted; the night must not depend on it, and no frame may be lost to it.
+Code: `wilds/control/filing.py`. Adapted from MAST's `Filer` (RAM disk to share, deferred moves,
+a sweeper), without its `MoveGuardian`, which guards against a mover taking a file a producer is
+still writing: here a file is visible to the sweeper only when it is whole, so nothing needs
+guarding. MAST's `common` package is not shared (§2, "GUI stack and look" says the same of its
+GUI).
+
+- **The staging folder is the queue.** A producer calls `filing.writing("<ID>/YYYYMMDD/<name>")`
+  and writes to `.<name>.partial`; on a clean exit the file is renamed into place, whole, and the
+  sweeper is woken. A failed write leaves nothing. What is in staging under a normal name is
+  complete and waiting, and survives a restart of wilds-control (no in-memory queue to lose).
+  Hidden names are the mechanism, never a product. At startup, partials left by a crash are
+  removed and what waits is counted.
+- **Delivery** runs in one background thread, every `sweep_interval_s` (30 s) and whenever a file
+  is added: probe the share; if it answers, copy each waiting file (oldest first) to
+  `.<name>.partial` beside its target, check the size, rename into place, then remove it from
+  staging (and any empty folders). The final name on the share is therefore always a whole file,
+  which matters because facility software watches that folder. A file already there with the
+  same bytes counts as delivered. A *different* file with the same name is never overwritten:
+  the source stays, the clash is logged once and shown as a warning.
+- **The probe** creates and removes a folder in the share's root, in a thread joined with a
+  timeout (`probe_timeout_s`, 2 s), so a hung mount costs one timeout, not a stuck sweeper. While
+  an earlier probe is still hung no second thread is started. The share's root is **never
+  created**, and with `share_is_mount = true` (production) it must be a mount point: an unmounted
+  mount point is an empty local folder, and delivering into it would fill the local disk and look
+  like success.
+- **Disk ceiling:** a new file is refused (`StagingFull`) when the staging disk is 90 % full.
+- **Status:** `/status` has `filing`: `share` (`unknown | online | offline`), `pending` files and
+  bytes, the age of the oldest, `delivered` since start, `last_error`, `staging_used`,
+  `staging_full`. While files wait and the share is offline, and when the disk is full or a
+  delivery is stuck, `warnings` says so (shown on the pages as other warnings are).
+- **Configuration** (`[filing]`, deployment settings, read at start): `staging_root`
+  (`/var/lib/wilds/staging`), `share_root` (`/lois/data/dct`), `share_is_mount`,
+  `sweep_interval_s`, `probe_timeout_s`, `disk_ceiling`. In development both roots are folders
+  under `~/wilds-dev`; renaming the share folder "unplugs" it.
+- **Not decided here:** the numbering of files (`<abbr>.NNNN.fits`) belongs to whoever names
+  them and must not restart when staging empties (MAST's counter lived on a RAM disk and did
+  exactly that); whether anything else (LIG's pipeline, Locutus headers) must happen before a
+  file may be delivered; the GUI display of `filing` (a line on the board or a badge); the
+  Products page (§2) reads both staging and the share.
+
 ## 4. Order of work
 
 | # | Step | Testable with | Blocked by |
@@ -735,5 +780,8 @@ Still open:
   a TO page is open and unlocked. Aliases: `/telescope-operator`, `/telop` → `/to`;
   `/instrument-operator`, `/instop` → `/io`; `/engineering` → `/eng`. `/eng` stays on :8000;
   a reverse proxy on :80 for `http://wilds/...` is not decided.
+- **Local staging with probe and sweep** (2026-11-08): data files are written to a local staging
+  disk and delivered to the share by a sweeper, which can be built and tested before the share
+  exists (§3.15).
 - **Calibration and Configuration live on `/eng`** (2026-11-07), not `/io`: `/io` keeps Operations
   and Products; `/io/calibration/` and `/io/configuration/` redirect to the `/eng` pages.
