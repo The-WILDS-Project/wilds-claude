@@ -157,6 +157,33 @@ with per-iteration events (frame, solution, offset sent, residual);
 `POST /telescope/offset/absorb`; `POST /telescope/offset/clear`;
 `POST /guide-camera/solve` (one-off solve of the latest frame).
 
+**Built so far (2026-11-12).** `wilds/control/telescope/`: a `TelescopeBase` with a simulated TCS
+(External Command Preview included; `/dev/telescope/preview|accept|reject` stand in for the
+TCS GUI) until the bridge is wired in. `GET /telescope`; `POST /telescope/slew`, `/rotator`,
+`/offset`, `/offset/clear`, `/offset/absorb`, each a job reserving `telescope`, whose message
+follows sent, waiting for the TO, in progress, done (or `refused` when the TO does not accept in
+time, cancel takes the command back). An offset sets the register's new total (default register
+`Handset`, acquisition tweaks), limited by `telescope.conf.max_offset_arcsec`. Offsets and
+the rotator are adjustments: they need a target the telescope is *on* (current, in position,
+nothing waiting for the TO), else `409 conflict` and the action is greyed with the reason. `/status` carries `telescope`, `tcs` (the header pill) and `actions`
+(`slew`, `offset`, `rotator`) with the reason. `GET /resolve?name=` uses `object_resolver.py`,
+a copy of MAST's resolver (Sesame mirrors raced, TNS optional through `WILDS_TNS_*`, moving
+targets refused). GUI: the Operations page has tabs Acquisition, Focus, Guiding (start and stop,
+greyed until control can guide) and Test (development); the Acquisition tab's target entry
+takes coordinates and the slit PA, or a name that *Resolve* turns into coordinates (valid
+coordinates win over the name); only coordinates are sent, and a target with no name is called
+by them (`J033000.0+211500`). It sends the slew and follows it. The slit
+overlay is drawn in the browser over the dock's live view from the guide camera's `cal`
+(plate scale, slit pixel, orientation, parity, slit length and width; mapped through the frame's
+ROI and binning) and the telescope's rotator angle, with a handle to turn the slit (a pending PA,
+sent by the Rotation panel) and a *pick a star* mode that turns a click into an offset for the
+Offsets panel (nudge arrows by sky direction, *Apply*, *Clear*, *Absorb*). The live view zooms (1x to 16x: buttons, the mouse wheel around the pointer, a *zoom to the slit* button; drag to pan); the overlay scales with it, keeping its handle, compass and readout the same size on screen. The guide camera is on the rotator, so the slit stays put in the image and the sky turns when the
+slit PA changes: north is at the calibrated `orientation_deg` (the angle at PA 0) minus parity
+times the PA. The simulated camera follows the simulated telescope (offsets shift the stars,
+the rotator turns the field about the slit). `[guide_camera]
+seed_simulated_calibration` fills a slit into the simulated camera for development. Still to
+come: the science-camera *Acquire* series (the card is there, greyed), Focus.
+
 ### 3.4 Autofocus
 
 Procedure: step the telescope focus through a range centred on *LDT focus + WILDS offset*,
