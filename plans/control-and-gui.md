@@ -823,13 +823,14 @@ Adopted from MAST's units: a component is powered but idle until started up. Cod
   shutdown; whether stopping the server shuts components down; a power switch, kept apart from
   `opstate`.
 
-### 3.17 Shutter, dark and bias frames, the frame viewer
+### 3.17 Light path, shutter, dark and bias frames, the frame viewer
 
 Dark and bias frames with the guide camera come in handy for autofocus, guiding correlations and
 the like. Code: `wilds/control/shutter/`, `guide_camera/calibration_frames.py`,
-`routers/shutter.py`, `routers/guide_calibration.py`.
+`routers/shutter.py`, `routers/guide_calibration.py`, `light_path.py`, `routers/light_path.py`.
 
-**Shutter.** One software-controlled shutter in the guide camera's light path; the camera does not
+**Shutter.** One software-controlled shutter for the **science cameras' path only** (the guide
+camera, an ASI294MM, has none; its darks use the light path below); the camera does not
 trigger it, and the hardware is not final, so only a simulator exists (`ShutterBase` →
 `SimulatedShutter`). State `open`, `closed`, `moving` or `unknown`; conf `settle_s`. Lifecycle
 (§3.16): startup reads the blade, shutdown closes it (closed is the safe state); operational
@@ -840,13 +841,30 @@ appears in `/status.shutter`, the activity board and the system's components.
 
 **Taking the frames.** `POST /guide-camera/calibration/frames` `{kind: dark|bias, count (1-200,
 default 10), match: single_frame|video, exposure_s?, require_stable_cooler (default true)}` is a
-job that reserves the camera and the shutter. It closes the shutter, takes `count` frames, puts the
-shutter back, and files the frames and their median. The frames use the gain, offset, binning and
+job that reserves the camera. It takes `count` frames and files them and their median. The frames use the gain, offset, binning and
 ROI of the `match` group; a dark uses that group's exposure or its own `exposure_s`, a bias the
 shortest exposure (and takes none). Refused with `409 busy` while streaming, `409
-not_operational` before startup, and `409 cooler_not_stable` while the sensor is still cooling (a
-dark taken then would not match later ones). Cancelling cuts the exposure short and the shutter
-is still restored. The simulated camera records only dark current while the shutter is closed.
+not_operational` before startup, `409 cooler_not_stable` while the sensor is still cooling (a
+dark taken then would not match later ones) and, for a dark, `409 light_not_blocked` unless the
+light path is blocked; a dark run stops with that error if the light comes back. A bias, at the
+shortest exposure, needs no cover. Cancelling cuts the exposure short. The simulated camera
+records only dark current while the light path is blocked.
+
+**Light path.** Is light reaching WILDS? Only the TO can block it (close the M1 cover,
+move a fold mirror, whatever the telescope needs), so blocking is a request and an acknowledgement
+(`light_path.py`, `routers/light_path.py`, `/status.light_path`). State `lit`, `block_requested`,
+`blocked`, `unblock_requested` or `unknown`, with who asked, the TO's note and the last refusal.
+The lease holder asks (`POST /light-path/block-request`, `/restore-request`) and may `cancel`; the
+TO (passphrase) `acknowledge`s (a block request becomes `blocked`, a restore request `lit`),
+`refuse`s with a reason (the state goes back and the reason is shown), or states how things are
+(`PUT /light-path/state`; the TO may restore the light at any time). The state is only what
+people said: `unknown` after a restart, never restored from an older claim. GUI: a pill in the
+header of every page (a reminder colour after 15 minutes blocked), Ask/Restore/Cancel on the
+Calibration card, and a card on the TO page with *Light is blocked / restored* and *Not now…*.
+It concerns WILDS only. **To investigate:** deducing the state from telemetry the bridge
+already parses (`m1CoverState`, `instrumentCube` cover and fold mirrors FMA–FMD; no M3 appears in
+the LDT TCS manual v1.9 or the science instrument interface v78, and no command interface for
+them is documented), and a measured source (a short frame at about bias level means dark).
 
 **Keeping them.** Engineering data, kept locally and never delivered to the share (§3.15), in
 **calibration sessions**: folders named by their UTC start time under
@@ -871,13 +889,13 @@ meanwhile, and starting the video or *Live* brings the video back. JS9 will also
 Products page (§2).
 
 **GUI.** Engineering → Calibration has a tab per thing to calibrate: Guide camera (this card:
-kind, count, which group to match, own dark exposure, wait for a stable cooler, progress and
-Cancel, sessions to start and switch, entries with view, open in a tab, download and discard,
-confirmed), Lamps, Slit, ADC, Focus and Science cameras (dark, bias, flat; the science
+the light-path row (state, Ask the TO to block/restore, Cancel), kind, count, which group to
+match, own dark exposure, wait for a stable cooler, progress and Cancel, sessions to start and
+switch, entries with view and discard, confirmed), Lamps, Slit, ADC, Focus and Science cameras (dark, bias, flat; the science
 cameras' own procedures come with §3.7).
 
-**Not decided:** where the shutter really is (it must block the guide camera's light, not only
-the science cameras'), and its hardware; how long sessions are kept (nothing but *Discard* deletes
+**Not decided:** the science shutter's hardware and whether science-camera darks use it or the
+light path; how long sessions are kept (nothing but *Discard* deletes
 them); what the cooler does on a long run; how autofocus and guiding choose and subtract a
 master (they call `find_master`).
 
@@ -974,6 +992,10 @@ Still open:
 - **One root for the files** (2026-11-11; §3.10): `$WILDS_ROOT` (`/opt/wilds` from the single
   .deb, `~/wilds-dev` in development, Linux layout under it) and `$WILDS_LOIS_DATA_ROOT`;
   packaging later, for the latest stable Ubuntu.
+- **Light path for dark frames** (2026-11-11; §3.17): the guide camera is the ASI294MM and has
+  no shutter; the shutter serves the science cameras only. A dark needs the TO to block the light
+  to WILDS on request (ask, acknowledge or refuse, restore), bias frames need no cover;
+  telemetry as a source is to be investigated.
 - **Shutter and calibration frames** (2026-11-11; §3.17): one software-controlled shutter for
   now; darks and biases are matched to a settings group, kept with a median master in
   time-stamped calibration sessions on the local disk; JS9 (vendored) shows them in the guide
