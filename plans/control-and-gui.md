@@ -304,10 +304,19 @@ applies to hardware and procedures.
 model in the backend, which validates them and applies them to the device. Two stores, by who
 writes:
 
-- **Deployment settings** are hand-edited in `/etc/wilds/config.toml` (root-owned, read at
+- **Where the files are.** Everything lives under one root, `$WILDS_ROOT` (`/opt/wilds`; the
+  single .deb package installs there and defines it), laid out as Linux expects: `bin/ lib/
+  share/` (the program: package-owned, read-only), `etc/` (`config.toml`, `passphrases.toml`;
+  never shipped by the package, so an upgrade cannot overwrite them), `var/lib/` (`settings.db`,
+  `staging/`, `guide-camera/calibration/`: kept across upgrades and purges), `var/log/`,
+  `var/run/`. The facility's data folder is not under it: its mount point is
+  `$WILDS_LOIS_DATA_ROOT` (default `/lois/data/dct`). All are defaults (`wilds/control/paths.py`);
+  a path in `config.toml` wins, and `$WILDS_CONTROL_CONFIG` / `$WILDS_CONTROL_PASSPHRASES` name
+  the two files directly. Development uses `WILDS_ROOT=~/wilds-dev`, the same layout.
+- **Deployment settings** are hand-edited in `$WILDS_ROOT/etc/config.toml` (root-owned, read at
   start; passphrases in their own file, §3.11). wilds-control never writes it.
 - **Operational and calibration settings** are written by the application, from the GUI or
-  from a procedure, so they live in **one SQLite file** (`/var/lib/wilds/settings.db`, the
+  from a procedure, so they live in **one SQLite file** (`$WILDS_ROOT/var/lib/settings.db`, the
   `[store]` section of config.toml; `wilds/control/settings_store.py`). Not MongoDB: MAST uses
   it for a fleet of units sharing one configuration; one machine needs no server to run,
   secure, back up and keep running before the instrument can start. SQLite is in the standard
@@ -359,7 +368,7 @@ own database holds only the observing log; there are no user accounts (§3.11).
 |---|---|---|---|
 | Operational | guide-camera exposure, gain; stage presets | the control holder | immediately, or rejected with `409` if the device is busy; kept in the settings store |
 | Calibration | plate scale, slit pixel, IAA, focus offset, ADC zero points | the control holder, in engineering mode | on save; every change recorded in the settings store with the holder's name, the time and the reason, and revertible |
-| Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | `/etc/wilds/config.toml` only, not editable in the GUI | on restart |
+| Deployment | broker host (`joe`/`tanagra`), device addresses, data paths, simulator on/off | `$WILDS_ROOT/etc/config.toml` only, not editable in the GUI | on restart |
 
 **Components and their settings**
 
@@ -474,7 +483,7 @@ that control requests wait for the TO. This replaces the IO page polling the TO 
 15 s: sessions already heartbeat to wilds-control, which tells everyone.
 
 **The TO page** is protected by its own shared passphrase, also in the configuration file
-(`/etc/wilds/passphrases.toml`, `[passphrases]`, a file of its own so it can have its own
+(`$WILDS_ROOT/etc/passphrases.toml`, `[passphrases]`, a file of its own so it can have its own
 owner and mode; in development `WILDS/.vault/passphrases.toml`; engineering defaults to
 `physics`, which is accepted as it is (no warning), TO has no default and stays closed until
 set). Both passphrases are configuration, not user management.
@@ -725,9 +734,9 @@ GUI).
   `staging_full`. While files wait and the share is offline, and when the disk is full or a
   delivery is stuck, `warnings` says so (shown on the pages as other warnings are).
 - **Configuration** (`[filing]`, deployment settings, read at start): `staging_root`
-  (`/var/lib/wilds/staging`), `share_root` (`/lois/data/dct`), `share_is_mount`,
+  (`$WILDS_ROOT/var/lib/staging`), `share_root` (`$WILDS_LOIS_DATA_ROOT`), `share_is_mount`,
   `sweep_interval_s`, `probe_timeout_s`, `disk_ceiling`. In development both roots are folders
-  under `~/wilds-dev`; renaming the share folder "unplugs" it.
+  under `~/wilds-dev` (`WILDS_ROOT`); renaming the share folder "unplugs" it.
 - **Not decided here:** the numbering of files (`<abbr>.NNNN.fits`) belongs to whoever names
   them and must not restart when staging empties (MAST's counter lived on a RAM disk and did
   exactly that); whether anything else (LIG's pipeline, Locutus headers) must happen before a
@@ -818,7 +827,7 @@ Still open:
   written by the app into a SQLite settings store, with history and revert (§3.10).
 - **Engineering page and TO presence** (2026-11-07): `/eng` replaces the engineering page in
   `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
-  in `/etc/wilds/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
+  in `$WILDS_ROOT/etc/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
   on 2026-11-07); the default engineering
   passphrase `physics` is accepted without a warning, with no rate limiting for now. The TO is online while
   a TO page is open and unlocked. Aliases: `/telescope-operator`, `/telop` → `/to`;
