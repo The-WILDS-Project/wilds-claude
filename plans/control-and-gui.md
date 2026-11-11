@@ -267,15 +267,41 @@ object}` → job; `POST /jobs/{id}/cancel`; `GET /exposures` (recent files).
 
 ### 3.8 Guide camera live view
 
-Shared by acquisition, autofocus, slit rotation and commissioning.
+Shared by acquisition, autofocus, slit rotation and commissioning. Code:
+`wilds/control/guide_camera/` (`GuideCameraBase`, `SimulatedASICamera`, `ASICamera` still to be
+written against the ZWO SDK).
 
 **LDT messages:** none directly. Overlays use `TCSTcsStatusSV` (target name, slit sky PA,
 parallactic angle).
 
-**Endpoints:** `PUT /guide-camera/settings` `{exposure_s, gain, roi, binning}`;
-`POST /guide-camera/start`; `POST /guide-camera/stop`; `WS /guide-camera/stream`;
-`GET /guide-camera/frames/{id}` (raw FITS). Overlays (slit, target marker, centroids,
-HFD) are drawn in the browser from the metadata frames, never burned into the JPEG.
+**Settings** (§3.10). The `conf` slice keeps **two groups of capture settings**, `single_frame`
+and `video`, each with `exposure_s`, `gain`, `offset`, `binning` (1 or 2) and `roi` (not set is
+the full sensor), plus the cooler (`cooler_enabled`, `cooler_setpoint_c`). A single frame uses the
+first, the video stream the second, so a live view can run short and binned while a frame for
+measuring is long and full-resolution. The `cal` slice holds plate scale, slit pixel,
+orientation and parity (`None` until measured). Each frame's metadata and FITS header carry the
+settings it was really taken with, and `mode` (`single_frame`, `video`, `dark`, `bias`; the FITS
+`IMAGETYP` follows).
+
+**Lifecycle** (§3.16). The camera takes no hardware writes until it is started up; startup puts
+the stored settings on the hardware (the cooler starts) and shutdown switches the cooler off.
+Frames, video and calibration frames are refused with `409 not_operational` before that.
+
+**Endpoints:** `GET /guide-camera` (status: settings, streaming, cooler, lifecycle,
+`last_frame_id`, `last_calibration_frame_id`); `GET|PUT /guide-camera/settings`
+`{single_frame: {...}, video: {...}}` (a group or field sent in part keeps the rest; 422 for a
+value outside its limits or an ROI outside the sensor, checked per group against its own
+binning); `GET|PUT /guide-camera/cooler` `{enabled, setpoint_c}`; `POST /guide-camera/start`,
+`/stop` (video; `409 busy` while a frame is exposing); `POST /guide-camera/frames` (one frame
+with the `single_frame` settings, a job); `WS /guide-camera/stream`;
+`GET /guide-camera/frames/{id}` (raw FITS of a recent frame; the last 8 are kept). Dark and bias
+frames are §3.17. Overlays (slit, target marker, centroids, HFD) are drawn in the browser from the
+metadata frames, never burned into the JPEG.
+
+**GUI:** the dock (a live view beside the Instrument Operator and Engineering pages, three sizes).
+Its exposure and gain are the `video` settings; the full settings form is under Engineering →
+Configuration. While calibration frames are taken or viewed the dock shows the frame viewer
+instead of the video (§3.17).
 
 ### 3.9 Commissioning support
 
@@ -743,6 +769,118 @@ GUI).
   file may be delivered; the GUI display of `filing` (a line on the board or a badge); the
   Products page (§2) reads both staging and the share.
 
+### 3.16 Lifecycle: start-up and shutdown
+
+Adopted from MAST's units: a component is powered but idle until started up. Code:
+`wilds/control/lifecycle.py` (no FastAPI imports); endpoints in `routers/system.py`.
+
+- **`opstate`** is one of `initializing` (during the constructor), `initialized` (the default
+  after construction: powered, not activated), `startedup` and `shutdown`. It changes when a
+  startup or shutdown call ends, whether or not that call fully succeeded.
+- **`operational`** is a separate bool and **`why_not_operational`** a list of reasons, both
+  computed live. A component can be `startedup` and still not operational (a lamp still warming,
+  a stage not referenced). Reasons: `starting up`, `shutting down`, `not started up`,
+  `shut down`, the last startup or shutdown error, then the component's own live reasons
+  (only once started up).
+- **Startup** activates a component and tries to make it operational (cooler on, stage referenced
+  and sent to its initial angle, lamps warming). A hardware failure is kept as a reason; the
+  component is still `startedup`, and calling startup again retries. **Shutdown** deactivates it;
+  from `shutdown` it can start up again or be powered down. A shutdown is refused with
+  `409 busy` while the component does something else, unless forced (which stops it first).
+- **Umbrella activities** (§3.13): every component and `wilds` itself have `StartingUp` and
+  `ShuttingDown`. An umbrella (`Umbrella`) runs from the first constituent starting to the last
+  one ending; `hold()` bridges the gaps of a sequential startup, and umbrellas nest (a future
+  ADC's two stages under the ADC, the ADC under `wilds`).
+- **WILDS as a whole** (`System`): components `register`; `startup` and `shutdown` run them all
+  under the `wilds` umbrella; a component that refuses as busy is reported and the others carry
+  on. `/status.system` has `opstate` (`startedup` or `shutdown` only when every component is;
+  `initializing` while any is; otherwise `initialized`, so a start-up or a shutdown is offered
+  whenever it would change something), `operational`, prefixed reasons and per-component state.
+- **Gating:** a task for a component that is not operational is refused with `409 not_operational`
+  and the reasons (the guide camera's frames and video, the shutter's moves, calibration frames).
+- **Who may:** the Telescope Operator (passphrase header) or whoever holds control. The TO needs
+  no session, so WILDS can be made operational before an Instrument Operator connects; later the
+  TO may also run session preparations in advance (flats and the like). They are jobs recorded
+  as started by `Telescope Operator [TO]`.
+- **Endpoints:** `GET /system`; `POST /system/startup`, `/system/shutdown?force=`,
+  `/system/{component}/startup`, `/system/{component}/shutdown?force=` (each a `202` job; a
+  startup that does not get operational is a finished job with the reasons in its result).
+- **Autostart:** `[startup] autostart` in config.toml; unset means yes in development
+  (simulators) and no in production, where startup moves stages and heats lamps and someone should
+  choose the moment.
+- **GUI:** every page's header shows `WILDS: <state>` (started up, shut down, initialized,
+  starting up…, with "not operational" in amber and the reasons in the tooltip). The TO page has a
+  WILDS card: Start up unless `startedup`, Shut down (confirmed) unless `shutdown`, both off
+  while one runs.
+- **First components:** the guide camera (startup applies the stored settings and starts the
+  cooler; shutdown switches the cooler off, saved settings untouched) and the shutter (startup
+  finds the blade without moving it; shutdown closes it).
+- **Not decided or not built:** startup for the ADC (find home, set the initial angle; one
+  reference mark per stage is inferred), lamps, slit, stages, science cameras (cooling) and the
+  mount; one shared MCS2 connection (opened by the first component's startup, released by the
+  last shutdown); `/status.actions` greying controls by `not_operational`; a TO who cancels the
+  jobs they started (the TO page can see jobs, not cancel them); a gradual cooler warm-up at
+  shutdown; whether stopping the server shuts components down; a power switch, kept apart from
+  `opstate`.
+
+### 3.17 Shutter, dark and bias frames, the frame viewer
+
+Dark and bias frames with the guide camera come in handy for autofocus, guiding correlations and
+the like. Code: `wilds/control/shutter/`, `guide_camera/calibration_frames.py`,
+`routers/shutter.py`, `routers/guide_calibration.py`.
+
+**Shutter.** One software-controlled shutter in the guide camera's light path; the camera does not
+trigger it, and the hardware is not final, so only a simulator exists (`ShutterBase` →
+`SimulatedShutter`). State `open`, `closed`, `moving` or `unknown`; conf `settle_s`. Lifecycle
+(§3.16): startup reads the blade, shutdown closes it (closed is the safe state); operational
+unless the state is unknown. `async with shutter.closed():` closes it for a block and puts it back
+as found, however the block ends. Endpoints: `GET /shutter`, `POST /shutter/open|close` (control
+lease; `409 busy` while moving or while a job reserved it, `409 not_operational`). The shutter
+appears in `/status.shutter`, the activity board and the system's components.
+
+**Taking the frames.** `POST /guide-camera/calibration/frames` `{kind: dark|bias, count (1-200,
+default 10), match: single_frame|video, exposure_s?, require_stable_cooler (default true)}` is a
+job that reserves the camera and the shutter. It closes the shutter, takes `count` frames, puts the
+shutter back, and files the frames and their median. The frames use the gain, offset, binning and
+ROI of the `match` group; a dark uses that group's exposure or its own `exposure_s`, a bias the
+shortest exposure (and takes none). Refused with `409 busy` while streaming, `409
+not_operational` before startup, and `409 cooler_not_stable` while the sensor is still cooling (a
+dark taken then would not match later ones). Cancelling cuts the exposure short and the shutter
+is still restored. The simulated camera records only dark current while the shutter is closed.
+
+**Keeping them.** Engineering data, kept locally and never delivered to the share (§3.15), in
+**calibration sessions**: folders named by their UTC start time under
+`$WILDS_ROOT/var/lib/guide-camera/calibration/`, one of them active (`current`), any of them
+usable again. An entry is one acquisition (`dark-0001`): the raw frames and `master.fits`, the
+per-pixel median as float32 with `NCOMBINE`, all written whole and renamed into place; the
+session's `index.json` lists them. Numbers never clash after a discard. `CalibrationStore.
+find_master(kind, settings, temperature_c=…)` is what a consumer asks: the active session's master
+with the same gain, offset, binning and ROI (and, for a dark, exposure), nearest in sensor
+temperature within 3 °C. Endpoints: `GET /guide-camera/calibration/sessions`, `POST …/sessions`
+(optional label; becomes active), `POST …/sessions/{id}/activate`, `DELETE
+…/sessions/{id}/entries/{entry}` (discard, control lease), `GET …/sessions/{id}/entries/{entry}/
+{file}` (FITS; only listed files). Each frame is also kept among the 8 recent ones while its run
+goes (`/status.guide_camera.last_calibration_frame_id`, `GET /guide-camera/frames/{id}`).
+
+**Viewing.** JS9 3.9 (MIT) is vendored in wilds-gui (`static/vendor/js9-3.9`, no JS9 helper server)
+and shown by a `/viewer/` page that fetches a file from wilds-control (`?path=` must be a path on
+control, `?embed=1` for the dock; allowed in a frame of our own pages only). While a calibration
+run goes, the guide-camera dock shows the viewer in place of the video (each frame as it is
+taken, then the master) and so does *View* on a stored entry; the streaming controls are hidden
+meanwhile, and starting the video or *Live* brings the video back. JS9 will also serve the
+Products page (§2).
+
+**GUI.** Engineering → Calibration has a tab per thing to calibrate: Guide camera (this card:
+kind, count, which group to match, own dark exposure, wait for a stable cooler, progress and
+Cancel, sessions to start and switch, entries with view, open in a tab, download and discard,
+confirmed), Lamps, Slit, ADC, Focus and Science cameras (dark, bias, flat; the science
+cameras' own procedures come with §3.7).
+
+**Not decided:** where the shutter really is (it must block the guide camera's light, not only
+the science cameras'), and its hardware; how long sessions are kept (nothing but *Discard* deletes
+them); what the cooler does on a long run; how autofocus and guiding choose and subtract a
+master (they call `find_master`).
+
 ## 4. Order of work
 
 | # | Step | Testable with | Blocked by |
@@ -751,6 +889,8 @@ GUI).
 | 2 | Guide-camera simulator and live view with overlays | image simulator | none |
 | 3 | Jobs framework and error shape (§3.14) and the control lease, with the TO page | unit tests | none |
 | 3b | Activities registry and `/status` field (§3.13); components add theirs as they arrive | unit tests | none |
+| 3c | Lifecycle: opstate, operational, StartingUp/ShuttingDown (§3.16); TO start-up and shutdown | unit tests, simulators | none |
+| 3d | Shutter, dark and bias frames, JS9 viewer (§3.17) | simulators | the shutter hardware (final) |
 | 3a | Configuration framework (models, storage, history, schema endpoints) and the generic Django form renderer; first panels for the guide camera and stage presets | simulators | none |
 | 4 | Slit width, lamps and ADC panels | MCS2 SCPI simulator (6 channels) | 6-channel MCS2 part number; lamp stage models; lamp power switching (TBD) |
 | 5 | Target submission and slit rotation (`TCSTcsCommandSV`; fix `slew_to`'s topic) | TCS simulator | a session on nysa with Georgi, in case the MCB faults |
@@ -825,6 +965,19 @@ Still open:
 - **One TOML configuration file** (2026-11-05), replacing a file per component (§3.10). Refined
   2026-11-08: it holds *deployment* settings only; operational and calibration settings are
   written by the app into a SQLite settings store, with history and revert (§3.10).
+- **Lifecycle** (2026-11-09; §3.16): `opstate` (`initializing`, `initialized`, `startedup`,
+  `shutdown`) is separate from `operational` and `why_not_operational`; `StartingUp` and
+  `ShuttingDown` umbrellas on `wilds` and each component; the TO (passphrase) or the holder can
+  start up and shut down, so WILDS can be operational before an Instrument Operator connects.
+- **Two groups of capture settings** (2026-11-11; §3.8): `single_frame` and `video`, each with its
+  own exposure, gain, offset, binning and ROI.
+- **One root for the files** (2026-11-11; §3.10): `$WILDS_ROOT` (`/opt/wilds` from the single
+  .deb, `~/wilds-dev` in development, Linux layout under it) and `$WILDS_LOIS_DATA_ROOT`;
+  packaging later, for the latest stable Ubuntu.
+- **Shutter and calibration frames** (2026-11-11; §3.17): one software-controlled shutter for
+  now; darks and biases are matched to a settings group, kept with a median master in
+  time-stamped calibration sessions on the local disk; JS9 (vendored) shows them in the guide
+  camera dock.
 - **Engineering page and TO presence** (2026-11-07): `/eng` replaces the engineering page in
   `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
   in `$WILDS_ROOT/etc/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
