@@ -177,7 +177,11 @@ overlay is drawn in the browser over the dock's live view from the guide camera'
 (plate scale, slit pixel, orientation, parity, slit length and width; mapped through the frame's
 ROI and binning) and the telescope's rotator angle, with a handle to turn the slit (a pending PA,
 sent by the Rotation panel) and a *pick a star* mode that turns a click into an offset for the
-Offsets panel (nudge arrows by sky direction, *Apply*, *Clear*, *Absorb*). The live view zooms (1x to 16x: buttons, the mouse wheel around the pointer, a *zoom to the slit* button; drag to pan); the overlay scales with it, keeping its handle, compass and readout the same size on screen. The guide camera is on the rotator, so the slit stays put in the image and the sky turns when the
+Offsets panel (nudge arrows by sky direction, *Apply*, *Clear*, *Absorb*). The live view zooms (1x to 16x: buttons, the mouse wheel around the pointer, a *zoom to the slit* button; drag to pan); the overlay scales with it, keeping its handle, compass and readout the same size on screen. With `[sky] gaia_root` set (a catsHTM Gaia DR3 folder, copied reader `catalogs/catshtm.py`;
+MAST reads it from `\\\\last0\\catalogs\\GAIA\\DR3`, needs the `catalogs` extra) the simulated camera draws
+real stars (`sky.py`: a cone search around the pointing, gnomonic projection through the
+calibration, the rotator and the offsets, flux from the G magnitude), so the frames change with
+the target and can be plate-solved; without it, an invented field no solver can match. The guide camera is on the rotator, so the slit stays put in the image and the sky turns when the
 slit PA changes: north is at the calibrated `orientation_deg` (the angle at PA 0) minus parity
 times the PA. The simulated camera follows the simulated telescope (offsets shift the stars,
 the rotator turns the field about the slit). `[guide_camera]
