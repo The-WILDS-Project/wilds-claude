@@ -207,10 +207,16 @@ downloaded by WILDS) or `simulated`, which answers from the simulated camera's h
 (`guide_camera/optics.py`: what a calibration must recover). Accuracy against the simulator: across
 the strip 0.04 px, angle 0.2°, width 0.2 px; a 1″ slit needs about an 8 s exposure or stacked frames.
 The simulator's data set is a saved Gaia field of **M13** (`data/sky/m13.npz`, made by
-`python -m wilds.control.fetch_field`; the share reads at ~70 KB/s, so it is fetched once). Open
-questions: the real solver has not run (no index files here); the notes give the guide camera 0.037″/px
-but the simulator uses 0.27″/px; the slit stage is assumed to move both jaws symmetrically (the notes
-do not say).
+`python -m wilds.control.fetch_field`; the share reads at ~70 KB/s, so it is fetched once). The real
+solver has run (2026-11-12) on the simulated M13 field: both parities, three rotator angles, a binned
+frame, and the whole job recover the camera's hidden optics. Its index files are series 5200 tile 10
+(astrometry.net numbers its nside-2 HEALPix tiles as astropy's nested ones with the two sub-tile
+bits swapped), scales 0 and 1, 570 MB from `mast-share:Downloads/astrometry.indexes` (the share is
+reached over SSH to `mast-ns-control`, ~0.2 MB/s). Open questions: the notes give the guide camera
+0.037″/px but the simulator uses 0.27″/px (the job then needs `nominal_scale_arcsec_px`), and at
+0.037″/px the field is 2.5′ x 1.7′, about the size of the smallest series-5200 quads (2.0–2.8′):
+real frames may need a custom index of small quads built from Gaia; the slit stage is assumed to
+move both jaws symmetrically (the notes do not say).
 
 **Slit stage.** `slit/`: position in µm, presets `closed` (near the lower limit) and `open` (full
 travel), width in arcsec at 124.69 µm/arcsec (8.02″/mm). The SmarAct CLS-3232 has 21 mm of travel,
