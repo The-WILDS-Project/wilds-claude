@@ -693,11 +693,21 @@ component state. A job raises one or more activities, and an activity can exist 
   also leaves a red card in the *attention band* under the header until dismissed, since its
   pill is gone; nothing shows there when all is well. Only the session holding control sees an
   enabled Cancel (`/io`, `/eng`); `/to` is read-only.
-- **`opmode`** (`config.toml`, top level): `development` (the default) or `production`.
-  Reported in `/status`. The `/dev` helpers answer `404` unless it is `development`; the file is
-  re-read when it changes. `POST /dev/jobs/demo` ("testing 1 2 3") is a made-up job across
-  the slit, ADC and guide camera for watching the board, started from a card on `/io` Operations.
-  A deployed `config.toml` says `production`.
+- **`opmode`** (`config.toml`, top level) says what WILDS runs against:
+  `development` (the default; in-process simulators of everything on this machine),
+  `ldt-simulated` (LDT's own simulators, the TCS and MCU on nysa, through the test broker
+  tanagra) or `ldt-production` (the real telescope, through its own broker, joe). Reported in
+  `/status` and shown on every page as the MODE pill. The `/dev` helpers (and the Test tab and the
+  simulated Accept/Reject on `/to`) exist only in `development`: against LDT the TO answers in the
+  TCS itself. The file is re-read when it changes. `POST /dev/jobs/demo` ("testing 1 2 3") is a
+  made-up job across the slit, ADC and guide camera for watching the board.
+  The two LDT modes need `[broker] host`, and the mode and the host must agree (`ldt-simulated`
+  only with the test broker, `ldt-production` never with it) or wilds-control does not start (a
+  test session must never reach the telescope). Autostart is on only in `development`. Until the
+  LDT telescope (`LdtTelescope`, over wilds-bridge) is written, the LDT modes still use the
+  in-process simulator, and `/status.warnings` says so. Each device keeps its own `kind`
+  setting (the guide camera has one), so a simulated LDT can be run with real local hardware. A
+  deployed `config.toml` says `ldt-production` (or `ldt-simulated` on a test bench).
 
 ### 3.14 Jobs and errors
 
