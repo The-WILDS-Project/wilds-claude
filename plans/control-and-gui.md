@@ -188,6 +188,43 @@ the rotator turns the field about the slit). `[guide_camera]
 seed_simulated_calibration` fills a slit into the simulated camera for development. Still to
 come: the science-camera *Acquire* series (the card is there, greyed), Focus.
 
+**Calibrating the guide camera and the slit (built 2026-11-12).** Engineering → Calibration → Slit.
+`POST /calibration/optics` (a job reserving the camera, the slit stage and the telescope; the
+telescope must be on a star field and the light path open): close the slit and take a frame, plate
+solve it (`wilds-solving`: plate scale, which way north lies, parity), open the slit to a measuring
+gap (default 8″: a strip, because the stage's full 21 mm is 168″, wider than the slit is long) and
+take a second frame, then find the gap in the closed-minus-open difference (`slit_detect.py`: a box
+fitted by noise-weighted matched filtering, stars cancel in the difference). It reports the plate
+scale, the orientation at PA 0, the slit's centre, angle, length and width, and how far the slit
+sits from where the rotator says north is (the rotator's zero). The result is a measurement:
+`GET /calibration/optics/last` with its warnings (faint gap, width not what the stage was told,
+zero off by more than 1.5°), and `POST /calibration/optics/apply` writes it into the camera's
+`cal` with who and why; `cal.slit_angle_deg` is the measured slit direction (the slit and camera
+turn together). The width is not applied: the overlay follows the stage. The GUI shows measured
+against in-use values, and draws the detected slit's perimeter on the frame it was found in (a dock
+overlay, and a JS9 region). `[solver] kind` is `astrometry` (index files, series 5200, not
+downloaded by WILDS) or `simulated`, which answers from the simulated camera's hidden optics
+(`guide_camera/optics.py`: what a calibration must recover). Accuracy against the simulator: across
+the strip 0.04 px, angle 0.2°, width 0.2 px; a 1″ slit needs about an 8 s exposure or stacked frames.
+The simulator's data set is a saved Gaia field of **M13** (`data/sky/m13.npz`, made by
+`python -m wilds.control.fetch_field`; the share reads at ~70 KB/s, so it is fetched once). The real
+solver has run (2026-11-12) on the simulated M13 field: both parities, three rotator angles, a binned
+frame, and the whole job recover the camera's hidden optics. Its index files are series 5200 tile 10
+(astrometry.net numbers its nside-2 HEALPix tiles as astropy's nested ones with the two sub-tile
+bits swapped), scales 0 and 1, 570 MB from `mast-share:Downloads/astrometry.indexes` (the share is
+reached over SSH to `mast-ns-control`, ~0.2 MB/s). Open questions: the notes give the guide camera
+0.037″/px but the simulator uses 0.27″/px (the job then needs `nominal_scale_arcsec_px`), and at
+0.037″/px the field is 2.5′ x 1.7′, about the size of the smallest series-5200 quads (2.0–2.8′):
+real frames may need a custom index of small quads built from Gaia; the slit stage is assumed to
+move both jaws symmetrically (the notes do not say).
+
+**Slit stage.** `slit/`: position in µm, presets `closed` (near the lower limit) and `open` (full
+travel), width in arcsec at 124.69 µm/arcsec (8.02″/mm). The SmarAct CLS-3232 has 21 mm of travel,
+1 nm closed-loop resolution and ±40 nm repeatability on the MCS2, >20 mm/s (SmarAct product page;
+the official data sheet was not found; the `-4th` suffix of our part number is still unexplained).
+`GET /slit`, `POST /slit/move {position_um | preset}`, `slit` in `/status`. A simulator stands in
+until the MCS2 is wired.
+
 ### 3.4 Autofocus
 
 Procedure: step the telescope focus through a range centred on *LDT focus + WILDS offset*,
