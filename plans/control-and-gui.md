@@ -58,11 +58,16 @@ CDN, so the GUI still loads over a slow VPN or from LDT without internet.
 - **Colour tokens:** the subdued info/success/warning/danger/primary/secondary palette, as
   CSS variables, renamed `--mast-*` → `--ui-*`, and the severity classes for borders and text.
 - **Status dots** (ok / warning / error, with warning and error pulsing) and the pulsing
-  **activity heart**, whose tooltip lists what's running. Used for the TCS access badge, the
+  **activity heart**, whose tooltip lists what's running. Used for the TCS accepts/rejects badge, the
   wilds-control link and running jobs.
-- **Toasts** for notices, the **confirm modal** (e.g. "Slew now" with Preview off), the
+- **Toasts** for notices, the **confirm modal**, the
   `x-tooltip` Alpine directive (for why a control is greyed out), and the link-status
   dropdown.
+- **Explanations carry an info icon** (2026-11-13): an element with a tooltip that explains
+  something (what a field means, its valid range, where a value comes from) gets an info icon
+  (`components/info.html`) to its right, and the tooltip is on the icon, not on the element. It
+  does not apply to buttons, the header pills, or a control that greys out with its reason: their
+  tooltip stays on the control.
 - **Layout:**
   - an 80 px header with the Weizmann and WILDS logos;
   - a collapsible sidebar and the main area for the multi-page `/io` (Operations, Products) and
@@ -125,7 +130,7 @@ list, submit, and a "slewing / in position" indicator.
 | → | `TCS.TCSSharedVariables.TCSSubData.TCSTcsCommandSV` | a full `ScienceTargetConfiguration`: target block, `rotator` (`rotPA`, `rotatorFrame=Target`), `wl_microns`, `fracrate`, `pointingOriginX/Y`, `trackID` | **Topic confirmed by Tim (2026-11-02).** Our 2026-10-31 attempt went to `TCSLowLevelStatusSV.NewScienceTargetSV`, which is TCS → broker only, so it never reached the TCS; `Telescope.slew_to` in wilds-bridge must change topic. First try on nysa with Georgi: the April test on this topic faulted the MCB. |
 | ← | `TCS…TCSLowLevelStatusSV.NewScienceTargetSV` | the TCS's current `newScienceTarget` | The starting point for re-sending the target (§3.5, §3.3) |
 | ← | `TCS…TCSLowLevelStatusSV.TCSTcsCommandResponseSV` | command result, `tcsErrorResponse` | Accept or reject |
-| ← | `TCSTcsStatusSV` | `pointingPositions.demandRADec`, `targetName`, `inPositionIsTrue`, `externalTargetCfgCmdPreviewIsTrue` | Confirms arrival. With preview on, the operator must approve. |
+| ← | `TCSTcsStatusSV` | `pointingPositions.demandRADec`, `targetName`, `inPositionIsTrue`, `externalTargetCfgCmdPreviewIsTrue` | Confirms arrival. With preview on the TCS holds external targets instead of acting on them (it "rejects" commands); nobody approves them. |
 
 Open questions: must the outer `demandRADec` values be integers? Does `pointingOriginX/Y`
 in the command override the instrument's pointing origin? WILDS should send its effective
@@ -158,14 +163,12 @@ with per-iteration events (frame, solution, offset sent, residual);
 `POST /guide-camera/solve` (one-off solve of the latest frame).
 
 **Built so far (2026-11-12).** `wilds/control/telescope/`: a `TelescopeBase` with a simulated TCS
-(External Command Preview included; `/dev/telescope/preview|accept|reject` stand in for the
-TCS GUI) until the bridge is wired in. `GET /telescope`; `POST /telescope/slew`, `/rotator`,
+(it accepts every command, as development mode's TCS always does) until the bridge is wired in. `GET /telescope`; `POST /telescope/slew`, `/rotator`,
 `/offset`, `/offset/clear`, `/offset/absorb`, each a job reserving `telescope`, whose message
-follows sent, waiting for the TO, in progress, done (or `refused` when the TO does not accept in
-time, cancel takes the command back). An offset sets the register's new total (default register
+follows sent, in progress, done (or `refused` when the TCS does not take the command up within
+a few seconds). An offset sets the register's new total (default register
 `Handset`, acquisition tweaks), limited by `telescope.conf.max_offset_arcsec`. Offsets and
-the rotator are adjustments: they need a target the telescope is *on* (current, in position,
-nothing waiting for the TO), else `409 conflict` and the action is greyed with the reason. `/status` carries `telescope`, `tcs` (the header pill) and `actions`
+the rotator are adjustments: they need a target the telescope is *on* (current, in position), else `409 conflict` and the action is greyed with the reason. `/status` carries `telescope`, `tcs` (the header pill) and `actions`
 (`slew`, `offset`, `rotator`) with the reason. `GET /resolve?name=` uses `object_resolver.py`,
 a copy of MAST's resolver (Sesame mirrors raced, TNS optional through `WILDS_TNS_*`, moving
 targets refused). GUI: the Operations page has tabs Acquisition, Focus, Guiding (start and stop,
@@ -494,7 +497,7 @@ own database holds only the observing log; there are no user accounts (§3.11).
 **LDT's model** (Tim, 2026-11-02): the TCS doesn't authenticate commands; anything on the
 local network can send them. Observing machines use a shared, role-based observer login,
 and remote observers VNC in and agree with the Telescope Operator (TO) over Zoom before
-commanding the telescope. The TO can lock out external commands at the TCS. EXPRES, with a
+commanding the telescope. The TO switches the TCS to accept external commands once the system is up; there is no per-command approval (Tim, 2026-11-12). EXPRES, with a
 web GUI hosted at LDT, is the suggested model for WILDS; how observers and spectators get
 access is up to us. Operations rely on a "good actor" model.
 
@@ -622,7 +625,7 @@ telescope.
   - `POST /control/requests/{id}/grant` and `/refuse` `{reason}`
   - `POST /control/revoke`
 
-### 3.12 Telescope commands: access, preview and confirmation
+### 3.12 Telescope commands: accepts/rejects and confirmation
 
 This applies to **every operation that changes telescope state**:
 - targets (`slew_to`) and slit rotation (`set_rotator`);
@@ -632,23 +635,24 @@ This applies to **every operation that changes telescope state**:
 
 They all go through one path in wilds-control rather than each handling it alone.
 
-**TCS access badge**, on every page and for every session, with or without control:
+**TCS accepts/rejects badge** ("TCS: accepts" green, "TCS: rejects" red, grey when unknown), on every page and for every session, with or without control:
 
 | Part | Source |
 |---|---|
 | TCS state and health | `TCSTcsStatusSV` |
 | TCS user mode, Operator or Engineer (the TCS GUI's own login, §4.12 of the TCS manual; not a lockout) | `accessMode` |
-| External Command Preview on/off | `externalTargetCfgCmdPreviewIsTrue` |
-| External commands locked out by the TO | field to be identified (§5) |
+| Accepts or rejects external commands (rejects = External Command Preview on) | `externalTargetCfgCmdPreviewIsTrue` (development mode: always accepts) |
 | Telemetry freshness | age of the last `TCSTcsStatusSV`; stale means the badge is grey or "unknown" |
 
-**External Command Preview** (TCS manual §5.4.2.1.7) is the TCS's own switch.
-- **On** (the default at TCS start-up): an external sidereal science target only fills the
-  TCS's preview panel; the telescope doesn't move until the TO accepts it.
-- **Off**: the target becomes current at once, and a tracking telescope slews immediately.
-
-Per the manual it covers science targets only, so a re-sent target (`set_rotator`) is
-previewed but offsets and focus presumably are not. Whether that holds is to be confirmed (§5).
+**No negotiation with the TO** (Tim, 2026-11-12). The TCS has a switch the TO turns on once the
+system is up, External Command Preview (TCS manual §5.4.2.1.7), reported as
+`externalTargetCfgCmdPreviewIsTrue`. While it is **on** the TCS only fills its preview panel from an
+external sidereal science target and does not move: for WILDS the TCS *rejects* commands. While it
+is **off** the TCS checks that a command is valid and within the telescope's range and acts on it
+at once: it *accepts*. Whether it is fine for the instrument operator to send targets is agreed by
+voice between the operators; no software approves or refuses a command. WILDS refuses to send
+while the TCS reports that it rejects, with the reason, and the TCS can still refuse a command that
+is invalid or out of range (the job ends `refused`).
 
 **Availability:** the status model carries a map with one entry per action, e.g.
 `{"slew": {"ok": false, "why": "TCS locked out external commands"}}`. GUIs grey out the
@@ -656,19 +660,13 @@ control and show `why` as a tooltip. wilds-control enforces the same rules, with
 (no lease) or `409` (state) and the same reason, so greying is a convenience, never the
 guard. A telescope action is unavailable when any of these apply:
 - there is no TO-granted lease (engineering mode doesn't count);
-- the TO has locked out external commands;
+- the TCS rejects external commands;
 - the TCS isn't in a state to accept the command;
 - telemetry is stale.
 
-**Effect label:** each control says what will happen.
-- **"Send to TO preview"** when the operation is previewed and Preview is on.
-- **"Applies immediately"** otherwise. A slew with Preview off asks for confirmation.
-- If Preview is unknown, assume the TO must approve.
-
 **Progress is confirmed from telemetry, never from sending.** Each operation is a job:
 
-`sent → waiting for TO (previewed only) → in progress → done`, or `not accepted` after a
-timeout. Each kind of operation has its own confirmation:
+`sent → in progress → done`, or `refused` when the TCS does not take the command up. Each kind of operation has its own confirmation:
 
 | Operation | Confirmed by |
 |---|---|
@@ -676,7 +674,7 @@ timeout. Each kind of operation has its own confirmation:
 | offsets | `offsetStatus` |
 | focus | AOS focus status (topic to be identified) |
 
-Every operation is logged with the session's name and code, the effect label shown, and the
+Every operation is logged with the session's name and code, and the
 outcome.
 
 ### 3.13 Activities
@@ -1011,10 +1009,9 @@ Still open:
    Was that a malformed message, or something in the MCB?
 2. Must the outer `demandRADec` values be integers? Does `pointingOriginX/Y` override the
    instrument's pointing origin?
-3. Which `TCSTcsStatusSV` field, if any, shows that the TO has locked out external
-   commands? Does the lockout also cover offsets and AOS focus?
-8. Is a re-sent target that changes only the rotator previewed like a new target? Are
-   offsets and focus never previewed?
+3. Does External Command Preview (rejects) also hold offsets and AOS focus, or only science
+   targets, as the manual says?
+8. What does the TCS answer (`TCSTcsCommandResponseSV`) to an invalid or out-of-range command?
 4. The AOS simulator's status, for autofocus testing.
 5. The `wilds.loisTelemetry` schema, the instrument ID and abbreviation, a TCS instrument
    entry, and a Locutus FITS dictionary for WILDS.
@@ -1042,8 +1039,7 @@ Still open:
   engineering mode takes control with a passphrase, for WILDS mechanisms only, never TCS
   commands (§3.11).
 - **One path for telescope commands** (2026-11-05): every telescope-state-changing
-  operation shows the TCS access badge and its effect ("Send to TO preview" or "Applies
-  immediately"), is greyed out with a reason when unavailable, and is confirmed from
+  operation shows the TCS accepts/rejects badge, is greyed out with a reason when unavailable, and is confirmed from
   telemetry rather than from sending (§3.12).
 - **GUI look copied from MAST** (2026-11-05): Django, Bootstrap 5.3, HTMX, Alpine.js; MAST's
   palette and components, plus a dark theme, safe text, pinned and bundled libraries, and no
