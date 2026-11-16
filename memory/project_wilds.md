@@ -178,6 +178,7 @@ Running since ~2026-09 (Tim, 2026-09-08). Caches the latest telemetry and, on re
 Each instrument has an entry in the TCS (TCS Command → Instrument Name). DeVeny's, read on the simulator 2026-10-31:
 - **Focal length 25 715.4 mm** → plate scale **8.02″/mm** at the Cassegrain focus. Slit: 1 mm = 8.02″ (1″ ≈ 0.125 mm) — the SlitWidthMM ↔ SlitWidthASEC conversion. Guide camera at 1:1: 4.63 µm px → **0.037″/px** (matches wilds-solving)
 - **Pointing origin X/Y 8.5 / −0.9 mm** — the instrument reference point (DeVeny: slit centre) relative to the rotator axis; WILDS needs its slit-centre value from commissioning
+- **WILDS slit: only one jaw moves** (Arie, 2026-11-16) — the gap opens from a fixed edge, so its centre moves with half the width. The guide-camera calibration's slit pixel is that fixed edge, plus `slit_side` (which way the gap grows), both measured from frames at two widths; the telescope points at the middle of the *working* (≈1") gap
 - **IAA 6.0°** (LMI: 185.2°) — slit orientation vs the rotator; WILDS needs its own, measured per Confluence "IAA and center of rotation measurement". Switching instruments re-applies it: the rotator swung ~180° while the sky PA stayed 0
 - **rotI 1** — meaning unknown; ask LIG
 - WILDS needs its own TCS instrument entry, configured by LIG

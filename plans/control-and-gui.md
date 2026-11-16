@@ -218,8 +218,9 @@ bits swapped), scales 0 and 1, 570 MB from `mast-share:Downloads/astrometry.inde
 reached over SSH to `mast-ns-control`, ~0.2 MB/s). Open questions: the notes give the guide camera
 0.037″/px but the simulator uses 0.27″/px (the job then needs `nominal_scale_arcsec_px`), and at
 0.037″/px the field is 2.5′ x 1.7′, about the size of the smallest series-5200 quads (2.0–2.8′):
-real frames may need a custom index of small quads built from Gaia; the slit stage is assumed to
-move both jaws symmetrically (the notes do not say).
+real frames may need a custom index of small quads built from Gaia; only one jaw of the slit
+moves (Nov 2026): the gap opens from a fixed edge and its centre moves with half the width, so the
+calibration finds that edge and the side the gap grows to, from frames at two widths.
 
 **Slit stage.** `slit/`: position in µm, presets `closed` (near the lower limit) and `open` (full
 travel), width in arcsec at 124.69 µm/arcsec (8.02″/mm). The SmarAct CLS-3232 has 21 mm of travel,
