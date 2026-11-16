@@ -195,7 +195,7 @@ come: the science-camera *Acquire* series (the card is there, greyed), Focus.
 `POST /calibration/optics` (a job reserving the camera, the slit stage and the telescope; the
 telescope must be on a star field and the light path open): close the slit and take a frame, plate
 solve it (`wilds-solving`: plate scale, which way north lies, parity), open the slit to a measuring
-gap (default 8″: a strip, because the stage's full 21 mm is 168″, wider than the slit is long) and
+gap (default 4″, the widest the slit opens: 0.5″-4″ in the WILDS PDR) and
 take a second frame, then find the gap in the closed-minus-open difference (`slit_detect.py`: a box
 fitted by noise-weighted matched filtering, stars cancel in the difference). It reports the plate
 scale, the orientation at PA 0, the slit's centre, angle, length and width, and how far the slit
@@ -222,8 +222,10 @@ real frames may need a custom index of small quads built from Gaia; only one jaw
 moves (Nov 2026): the gap opens from a fixed edge and its centre moves with half the width, so the
 calibration finds that edge and the side the gap grows to, from frames at two widths.
 
-**Slit stage.** `slit/`: position in µm, presets `closed` (near the lower limit) and `open` (full
-travel), width in arcsec at 124.69 µm/arcsec (8.02″/mm). The SmarAct CLS-3232 has 21 mm of travel,
+**Slit stage.** `slit/`: position in µm, presets `closed` (the narrowest gap, 0.5″ = 62.345 µm, the lower hard stop) and `open` (the widest, 4″
+= 498.76 µm, the upper one), width in arcsec at 124.69 µm/arcsec (8.02″/mm). The stage's range is fixed by hard stops (Arie, 2026-11-16), so the slit cannot close fully and a move
+past them is `422 invalid`; the optics calibration's closed frame has the 0.5″ gap in it and the
+calibration adds it back. The SmarAct CLS-3232 has 21 mm of travel,
 1 nm closed-loop resolution and ±40 nm repeatability on the MCS2, >20 mm/s (SmarAct product page;
 the official data sheet was not found; the `-4th` suffix of our part number is still unexplained).
 `GET /slit`, `POST /slit/move {position_um | preset}`, `slit` in `/status`. A simulator stands in
