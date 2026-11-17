@@ -25,7 +25,7 @@ editable, so cross-repo imports resolve.
   -e ./solving -e ./control -e ./gui -e ./science-camera sdss-archon pytest pytest-asyncio ruff`.
   `--no-sources` is needed because `science-camera` points `sdss-archon` at `../archon`,
   which isn't checked out; archon comes from PyPI instead.
-- Secrets live in `WILDS/.vault/` (outside every repo, never committed). Dev passphrases: `.vault/passphrases.toml` (`to`, `engineering`), read by wilds-control via `WILDS_CONTROL_PASSPHRASES` in the VS Code launch entry; deployed machines use `/etc/wilds/passphrases.toml`.
+- Secrets live in `WILDS/.vault/` (outside every repo, never committed). Dev passphrases: `.vault/passphrases.toml` (`to`; an old `engineering` key is ignored now), read by wilds-control via `WILDS_CONTROL_PASSPHRASES` in the VS Code launch entry; deployed machines use `/etc/wilds/passphrases.toml`.
 - Don't use `uv run` in a repo: it builds a project `.venv` and rewrites `uv.lock`. Use the shared venv. After renaming folders, reinstall the editable packages or `import wilds` fails.
 - `wilds` is a PEP 420 namespace package: no repo may add `src/wilds/__init__.py`, or it shadows
   the others (removed from bridge and solving on 2026-10-12).

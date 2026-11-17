@@ -31,7 +31,7 @@ rotator and on users. Nothing here is implemented yet.*
 | Short command | `POST`/`PUT` returns `200` with the resulting state |
 | Long procedure | `POST` returns `202 Accepted` with `{job_id}`; progress arrives as `job` events |
 | Jobs | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel`. States: queued → running → done, failed or cancelled |
-| Control | `POST /sessions`, `POST /control/requests` (request control), `DELETE /control` (release), `POST /control/engineering`; TO actions in §3.11. Every command and configuration change needs the lease token, or gets `403`. |
+| Control | `POST /sessions`, `POST /control/requests` (request control); TO actions in §3.11 (grant, refuse, revoke). Nobody releases control and there is no engineering mode (decision 2026-11-17). Every command and configuration change needs the lease token, or gets `403`. |
 | Configuration | `GET /config`, `GET`/`PUT /config/{component}`, `GET /config/{component}/schema`, `GET /config/{component}/history` (see §3.10) |
 | Video | `WS /guide-camera/stream`: binary JPEG frames, each preceded by a JSON metadata frame |
 
@@ -561,6 +561,17 @@ Sessions appear in the TO's request list only when they ask. If someone already 
 control, the grant moves it: the previous holder is told who has it now and drops to
 read-only immediately.
 
+**No engineering mode** (decision 2026-11-17, replaces the superuser page below). Engineering is not
+a control entity: the instrument operator who holds control (granted by the TO) may also calibrate
+and configure. The Engineering pages (Monitoring, Calibration, Configuration) are an
+"Engineering" group in the Instrument Operator's sidebar (`/io/engineering/...`); `/eng/` and
+`/engineering/` redirect there. There is no engineering passphrase, no `POST /control/engineering`
+and no `engineering` flag on the lease or in `/status`; every command and configuration change
+needs the lease token and nothing else. An `engineering` key left in `passphrases.toml` is
+ignored. Without a TO there is nobody to grant control: in the lab someone opens the TO page.
+
+*Superseded text, kept for the record:*
+
 **Engineering mode (superuser):** a separate page, `/eng` (on :8000, with the aliases
 `/engineering`), titled "WILDS - Engineering". The engineering passphrase unlocks it and takes
 control without the TO's approval, e.g. for daytime commissioning. It is checked by
@@ -584,9 +595,8 @@ that control requests wait for the TO. This replaces the IO page polling the TO 
 
 **The TO page** is protected by its own shared passphrase, also in the configuration file
 (`$WILDS_ROOT/etc/passphrases.toml`, `[passphrases]`, a file of its own so it can have its own
-owner and mode; in development `WILDS/.vault/passphrases.toml`; engineering defaults to
-`physics`, which is accepted as it is (no warning), TO has no default and stays closed until
-set). Both passphrases are configuration, not user management.
+owner and mode; in development `WILDS/.vault/passphrases.toml`; the TO has no default and stays
+closed until set; the engineering passphrase is gone, 2026-11-17). The passphrase is configuration, not user management.
 
 **Rules:**
 
@@ -1039,8 +1049,7 @@ Still open:
   page. wilds-control enforces the lease (§3.11).
 - **Two GUIs, one holder, many viewers** (2026-11-05): `/to` for the TO, `/io` for
   instrument operators; any number of read-only sessions from anywhere (local, VNC, VPN);
-  engineering mode takes control with a passphrase, for WILDS mechanisms only, never TCS
-  commands (§3.11).
+  (engineering mode, with its passphrase, was dropped on 2026-11-17: §3.11).
 - **One path for telescope commands** (2026-11-05): every telescope-state-changing
   operation shows the TCS accepts/rejects badge, is greyed out with a reason when unavailable, and is confirmed from
   telemetry rather than from sending (§3.12).
@@ -1077,7 +1086,10 @@ Still open:
   now; darks and biases are matched to a settings group, kept with a median master in
   time-stamped calibration sessions on the local disk; JS9 (vendored) shows them in the guide
   camera dock.
-- **Engineering page and TO presence** (2026-11-07): `/eng` replaces the engineering page in
+- **No engineering mode** (2026-11-17): whoever holds control, granted by the TO, may also calibrate and
+  configure; the Engineering pages are a sidebar group of `/io` (`/io/engineering/monitoring`,
+  `/calibration`, `/configuration`); no engineering passphrase, endpoint or lease flag.
+- **Engineering page and TO presence** (2026-11-07, superseded by the entry above): `/eng` replaces the engineering page in
   `/io`; no software coordination of engineering access (Zoom or in person); passphrases live
   in `$WILDS_ROOT/etc/passphrases.toml` (re-read when the file changes; moved out of `config.toml`
   on 2026-11-07); the default engineering
